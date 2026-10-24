@@ -1,0 +1,68 @@
+import {useEffect,useState} from 'react';
+import {Activity,Check,ChevronDown,FileDiff,Link2,ShieldCheck,X} from 'lucide-react';
+import {ipc} from '../hooks/useSettings';
+import './agents.css';
+
+const names:Record<string,string>={claude:'Claude Code',codex:'Codex',antigravity:'Antigravity',gemini:'Gemini CLI',cursor:'Cursor',copilot:'GitHub Copilot CLI',muse:'Muse Code'};
+const words:Record<string,string>={working:'يعمل الآن',waiting:'بانتظارك',completed:'اكتملت المهمة',idle:'هادئ',error:'تعثر',permission:'طلب موافقة'};
+export function AgentPanel({ar=false,configure=false}:{ar?:boolean;configure?:boolean}){
+  const t=(en:string,a:string)=>ar?a:en;
+  const [data,setData]=useState<any>(null),[selected,setSelected]=useState(''),[view,setView]=useState('activity'),[preview,setPreview]=useState<any>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+  const call=async(channel:string,input?:any)=>{if(!ipc)throw Error(t('Open the Windows app.','افتح تطبيق ويندوز.'));const result=await ipc.invoke(channel,input);if(result?.success===false||result?.error)throw Error(result?.error||'Request failed');return result;};
+  const refresh=async()=>{try{setData(await call('get-coding-agents-status')||{});}catch{setData({});}};
+  useEffect(()=>{
+    let live=true;
+    const load=async()=>{try{const next=await ipc?.invoke('get-coding-agents-status');if(live)setData(next||{});}catch{if(live)setError(t('Could not read agent activity.','تعذرت قراءة نشاط الوكلاء.'));}};
+    const change=()=>void load();void load();const timer=setInterval(change,1800);ipc?.on('agent-sessions-updated',change);
+    return()=>{live=false;clearInterval(timer);ipc?.removeListener('agent-sessions-updated',change);};
+  },[ar]);
+  const sessions:any[]=data?.sessions||[];
+  const focus=sessions.find(s=>s.id===selected)||sessions.find(s=>s.status==='waiting')||sessions.find(s=>s.status==='working')||sessions[0];
+  const pending:any[]=data?.pendingApprovals||[];
+  const changes=(focus?.diffs||[]).reduce((sum:any,d:any)=>({added:sum.added+(d.added||0),removed:sum.removed+(d.removed||0)}),{added:0,removed:0});
+  const act=async(request:any,optionId:string,answers?:any)=>{
+    setBusy(true);setError('');
+    try{await call(optionId==='deny'&&request.source!=='hook'?'agent-reject-action':'agent-approve-action',{id:request.id,optionId,fingerprint:request.fingerprint,answers});await refresh();}catch(e){setError(ar?'تعذر إرسال القرار. حدّث الحالة وراجع الطلب مجددًا.':e instanceof Error?e.message:'Could not answer.');}finally{setBusy(false);}
+  };
+  const scopeLabel=(integration:any)=>{
+    const mode=integration.questionSupport||(integration.questions?'global-mcp':integration.approval?'approvals-only':'activity-only');
+    if(mode==='global-mcp'||mode==='global-hooks')return t('Questions in island · saved for all local chats','الأسئلة في الجزيرة · محفوظ لكل الشاتات المحلية');
+    if(mode==='approvals-only')return t('Activity & approvals','النشاط والموافقات');
+    return t('Activity only','النشاط فقط');
+  };
+  return <section className="agent-panel" dir={ar?'rtl':'ltr'} aria-label={t('Coding agents','وكلاء البرمجة')}>
+    <div className="agent-pills" role="tablist" aria-label={t('Agent sessions','جلسات الوكلاء')}>
+      {sessions.map(s=><button key={s.id} role="tab" aria-selected={focus?.id===s.id} onClick={()=>{setSelected(s.id);setView('activity');}} style={{'--agent-color':s.color} as React.CSSProperties}><i/><span>{s.name}</span>{s.status==='waiting'&&<span className="agent-wait-dot"/>}{pending.filter(p=>p.sessionId===s.id).length>0&&<small>{pending.filter(p=>p.sessionId===s.id).length}</small>}</button>)}
+      {!sessions.length&&<span className="agent-muted">{t('Your agents, in one place','وكلاؤك، في مكان واحد')}</span>}
+    </div>
+    <div className="agent-hero" data-state={focus?.status||'idle'}>
+      <div className="agent-hero-icon" style={{color:focus?.color||'var(--app-accent)'}}><Activity size={24}/></div>
+      <div><p className="agent-eyebrow">{focus?.name||'MOHIVX'}</p><h3>{focus?(ar?words[focus.status]||focus.status:({working:'Working now',waiting:'Needs your answer',completed:'Task complete',idle:'All quiet',error:'Needs attention'} as Record<string,string>)[focus.status]):t('Ready when you are.','جاهز متى احتجت.')}</h3><p dir="auto">{focus?.project||t('Connect an agent to follow its work here.','اربط وكيلًا لمتابعة عمله هنا.')}</p></div>
+      {focus&&<span className="agent-state-dot"/>}
+    </div>
+    {focus?.lastStep&&<p className="agent-live-step" dir="auto">{focus.lastStep}</p>}
+    {focus?.diffs?.length>0&&<button className="agent-change-summary" onClick={()=>setView('changes')}><FileDiff size={13}/>{focus.diffs.length} {t('changes','تغييرات')} <span className="diff-added">+{changes.added}</span><span className="diff-removed">−{changes.removed}</span></button>}
+    {pending.map(p=><PendingRequest key={p.id} request={{...p,owner:sessions.find(s=>s.id===p.sessionId)?.name||names[p.agent]||p.agent}} ar={ar} busy={busy} decide={(option,answers)=>void act(p,option,answers)}/>)}
+    {focus&&<>
+      <div className="agent-view-tabs"><button aria-pressed={view==='activity'} onClick={()=>setView('activity')}><Activity size={13}/>{t('Activity','النشاط')}</button><button aria-pressed={view==='changes'} onClick={()=>setView('changes')}><FileDiff size={13}/>{t('Changes','التغييرات')} <small>{focus.diffs?.length||0}</small></button></div>
+      {view==='activity'?<div className="agent-steps">{(focus.steps||[]).slice(0,8).map((step:any,i:number)=><div key={i}><span className="agent-step-dot"/><span dir="auto">{step.detail}</span><time>{new Date(step.at).toLocaleTimeString(ar?'ar':'en',{hour:'2-digit',minute:'2-digit'})}</time></div>)}</div>:<div className="agent-diffs">{!focus.diffs?.length&&<p className="agent-muted">{t('No file changes received.','لم تصل تغييرات ملفات.')}</p>}{focus.diffs?.map((diff:any)=><details key={diff.id}><summary><span dir="auto">{diff.path}</span><span className="diff-added">+{diff.added}</span><span className="diff-removed">−{diff.removed}</span></summary>{diff.tooLarge?<p>{t('This change is too large to preview.','التغيير كبير على المعاينة.')}</p>:<pre dir="ltr">{diff.hunks?.flatMap((h:any)=>h.lines).map((line:any,i:number)=><span key={i} data-kind={line.kind}>{line.kind==='added'?'+':line.kind==='removed'?'−':' '} {line.text}{'\n'}</span>)}</pre>}</details>)}</div>}
+    </>}
+    {(configure||!sessions.length)&&<details className="agent-connect"><summary><Link2 size={13}/>{t('Connect your agents','ربط الوكلاء')}<ChevronDown size={12}/></summary><p className="agent-muted">{t('Connect once to save the island as your question destination for new local chats. Reload existing chats after connecting.','اربط الوكيل مرة واحدة ليحفظ إرسال الأسئلة إلى الجزيرة في الشاتات المحلية الجديدة. أعد تحميل الشاتات المفتوحة بعد الربط.')}</p>{(data?.hookIntegrations||[]).map((integration:any)=><div className="agent-integration" key={integration.agent}><span>{names[integration.agent]||integration.agent}<small>{integration.installed?t('Connected','مرتبط'):t('Not connected','غير مرتبط')} · {scopeLabel(integration)}</small></span><button disabled={busy||!integration.ready} onClick={async()=>{setError('');try{setPreview(await call('agent-hook-preview',{agent:integration.agent,install:!integration.installed}));}catch(e){setError(String(e instanceof Error?e.message:e));}}}>{integration.installed?t('Review removal','مراجعة الإزالة'):t('Review connection','مراجعة الربط')}</button></div>)}</details>}
+    {preview&&<div className="agent-preview"><b>{t('Connection changes','تغييرات الربط')} · {names[preview.agent]||preview.agent}</b>{(preview.changedPaths?.length?preview.changedPaths:preview.paths||[preview.path]).map((file:string)=><p key={file} dir="ltr">{file}</p>)}<p className="agent-muted">{t('Existing chats may need a reload or new session to pick up global tools and instructions.','قد تحتاج المحادثات المفتوحة إلى إعادة تحميل أو جلسة جديدة لتفعيل الأدوات والتعليمات العامة.')}</p><details><summary>{t('View changes','عرض التغييرات')}</summary><pre dir="ltr">{preview.diff}</pre></details><div className="agent-actions"><button onClick={()=>setPreview(null)}>{t('Cancel','إلغاء')}</button><button className="agent-primary" disabled={busy} onClick={async()=>{setBusy(true);try{await call('agent-hook-apply',preview.id);setPreview(null);await refresh();}catch(e){setError(String(e instanceof Error?e.message:e));}finally{setBusy(false);}}}>{preview.install?t('Connect','تفعيل الربط'):t('Remove connection','إزالة الربط')}</button></div></div>}
+    {!data&&<p className="agent-muted">{t('Reading agent activity…','جارٍ قراءة نشاط الوكلاء…')}</p>}
+    {data?.bridge?.error&&<p role="status" className="agent-muted">{t('The agent connection is unavailable.','ربط الوكلاء غير متاح حاليًا.')}</p>}
+    {data&&<details className="agent-connection-status"><summary>{t('Connection status','حالة الربط')}</summary><p>{data.bridge?.enabled?t('Island receiver is running.','مستقبل الطلبات في الجزيرة يعمل.'):t('Island receiver is stopped. Enable the agent bridge in settings.','مستقبل الجزيرة متوقف. فعّل ربط الوكلاء من الإعدادات.')}</p><p>{sessions.length?t('Agent events have reached the island.','وصلت أحداث من الوكلاء إلى الجزيرة.'):t('No agent events received in this app session yet. A saved connection alone does not mean events are arriving.','لم تصل أحداث من الوكلاء خلال تشغيل التطبيق الحالي. حفظ الربط وحده لا يعني وصول الأحداث.')}</p><p>{t('Connecting Codex, Gemini CLI, Antigravity, or Claude Code configures island questions globally for new or reloaded local chats. Other agents remain activity or approval only. Native chat choice cards are not intercepted automatically, and host permissions still apply.','ربط Codex أو Gemini CLI أو Antigravity أو Claude Code يفعّل أسئلة الجزيرة عامًا للمحادثات الجديدة أو المعاد تحميلها. بقية الوكلاء للنشاط أو الموافقات فقط. بطاقات الاختيار الأصلية لا تُعترض تلقائيًا، وتبقى صلاحيات المضيف سارية.')}</p></details>}
+    {error&&<p role="alert" className="agent-error">{error}</p>}
+  </section>;
+}
+function PendingRequest({request:p,ar,busy,decide}:{request:any;ar:boolean;busy:boolean;decide:(option:string,answers?:any)=>void}){
+  const [custom,setCustom]=useState<Record<string,string>>({}),[answers,setAnswers]=useState<Record<string,string[]>>({}),[clock,setClock]=useState(Date.now());
+  useEffect(()=>{const timer=setInterval(()=>setClock(Date.now()),1000);return()=>clearInterval(timer);},[]);
+  const expired=p.expires&&p.expires<=clock;
+  const t=(en:string,a:string)=>ar?a:en;
+  const choose=(q:any,label:string,checked:boolean)=>setAnswers(previous=>({...previous,[q.question]:q.multiSelect?(checked?[...(previous[q.question]||[]),label]:(previous[q.question]||[]).filter(x=>x!==label)):[label]}));
+  return <div className="agent-approval" data-testid="agent-approval"><div className="agent-approval-title"><ShieldCheck size={16}/><b>{p.questions?t('Your answer','إجابتك'):t('Permission needed','بحاجة لموافقتك')}</b>{p.expires&&<small>{Math.max(0,Math.ceil((p.expires-clock)/1000))}s</small>}</div><p dir="auto">{p.owner&&<b>{p.owner} · </b>}{p.title}</p>
+    {p.questions?p.questions.map((q:any,i:number)=><fieldset key={i}><legend>{q.question}</legend>{q.options?.map((o:any)=><label key={o.label}><input type={q.multiSelect?'checkbox':'radio'} name={p.id+i} checked={(answers[q.question]||[]).includes(o.label)} onChange={e=>choose(q,o.label,e.target.checked)}/><span>{o.label}{o.description&&<small>{o.description}</small>}</span></label>)}<input className="agent-written-answer" aria-label={t('Write an answer: ','اكتب إجابة: ')+q.question} placeholder={t('Or write your answer…','أو اكتب إجابتك…')} value={custom[q.question]||''} onChange={e=>setCustom(previous=>({...previous,[q.question]:e.target.value.slice(0,2000)}))}/></fieldset>):<pre dir="auto">{p.detail||p.title}</pre>}
+    <div className="agent-actions">{p.source==='hook'&&<button disabled={busy||expired} onClick={()=>decide('reply_terminal')}>{p.bridgeSource==='desktop-question-bridge'?t('Reply in chat','الرد في المحادثة'):t('Reply in terminal','الرد في الطرفية')}</button>}<button disabled={busy||expired} onClick={()=>decide('deny')}><X size={13}/>{t('Deny','رفض')}</button>{p.questions?<button className="agent-primary" disabled={busy||expired||p.questions.some((q:any)=>!answers[q.question]?.length&&!custom[q.question]?.trim())} onClick={()=>decide('answer',Object.fromEntries(p.questions.map((q:any)=>[q.question,[...(answers[q.question]||[]),custom[q.question]?.trim()].filter(Boolean).join(', ')])))}><Check size={13}/>{t('Send answers','إرسال الإجابات')}</button>:p.source==='hook'?<button className="agent-primary" disabled={busy||expired} onClick={()=>decide('allow_once')}><Check size={13}/>{t('Allow once','السماح مرة واحدة')}</button>:p.options?.filter((o:any)=>o.optionId!=='deny').map((o:any)=><button className="agent-primary" key={o.optionId} disabled={busy||expired} onClick={()=>decide(o.optionId)}>{ar?({allow_once:'السماح مرة واحدة',allow_session:'السماح للجلسة',allow_always:'السماح دائمًا'} as Record<string,string>)[o.optionId]||o.name:o.name}</button>)}</div>
+  </div>;
+}

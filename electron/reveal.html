@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+      pointer-events: none;
+    }
+    #reveal-wrapper {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      transition: opacity 0.25s ease-out;
+      pointer-events: none;
+    }
+    .wp-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      object-fit: cover;
+      pointer-events: none;
+    }
+    #old-layer {
+      z-index: 1;
+    }
+    #new-layer {
+      z-index: 2;
+      clip-path: circle(0% at center);
+    }
+    .animate-reveal {
+      animation: circularExpand 0.95s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+    }
+    @keyframes circularExpand {
+      0% {
+        clip-path: circle(0% at 50% 50%);
+        transform: scale(1.03);
+        filter: blur(5px);
+      }
+      40% {
+        filter: blur(1.5px);
+      }
+      100% {
+        clip-path: circle(150% at 50% 50%);
+        transform: scale(1);
+        filter: blur(0px);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="reveal-wrapper">
+    <img id="old-layer" class="wp-layer" src="" />
+    <img id="new-layer" class="wp-layer animate-reveal" src="" />
+  </div>
+  <script>
+    const { ipcRenderer } = require('electron');
+    ipcRenderer.on('start-reveal', (e, { oldPath, newPath }) => {
+      const oldImg = document.getElementById('old-layer');
+      const newImg = document.getElementById('new-layer');
+      const wrapper = document.getElementById('reveal-wrapper');
+      
+      if (oldPath) oldImg.src = 'file:///' + oldPath.replace(/\\/g, '/');
+      if (newPath) newImg.src = 'file:///' + newPath.replace(/\\/g, '/');
+      
+      newImg.classList.remove('animate-reveal');
+      void newImg.offsetWidth;
+      newImg.classList.add('animate-reveal');
+
+      // Listen for explicit fade-out when Windows has completely set and painted the new wallpaper
+      ipcRenderer.on('fade-out', () => {
+        wrapper.style.opacity = '0';
+      });
+
+      // Safety fallback only after 2500ms
+      setTimeout(() => {
+        wrapper.style.opacity = '0';
+      }, 2500);
+    });
+  </script>
+</body>
+</html>

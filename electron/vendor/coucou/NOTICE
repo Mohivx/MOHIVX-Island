@@ -1,0 +1,15 @@
+Coucou source integration
+Upstream: https://github.com/Louis-CFM/coucou
+Revision: 434d6a2b4af2e5ce117fa425170abe25620130b9
+
+MIT code by Louis Raillé: Windows agent hook relay, event normalization,
+permission response contracts, agent metadata, live diff engine, and UI palette.
+Android palette/rules code by Rhytam Biswas under MIT.
+
+MOHIVX adaptations: Electron bridge; authenticated local event transport;
+MOHIVX name and pipe; request fingerprints and expiry; existing six-digit
+pairing; Arabic interface; original MOHIVX character/icon; desktop features.
+
+Coucou/Mochi brand, character, icons, animation artwork, images and sounds
+are excluded from this integration. MOHIVX is an independent derivative.
+See LICENSE and LICENSE-ANDROID for retained notices.

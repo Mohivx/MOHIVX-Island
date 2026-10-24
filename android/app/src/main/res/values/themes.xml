@@ -1,0 +1,16 @@
+<resources>
+    <style name="Theme.MOHIVXCompanion" parent="Theme.MaterialComponents">
+        <item name="colorPrimary">@color/blue_accent</item>
+        <item name="colorAccent">@color/blue_accent</item>
+        <item name="android:colorAccent">@color/blue_accent</item>
+        <item name="android:statusBarColor">@color/obsidian_black</item>
+        <item name="android:navigationBarColor">@color/obsidian_black</item>
+    </style>
+    <style name="Theme.MOHIVXCompanion.NoActionBar" parent="Theme.MaterialComponents.NoActionBar">
+        <item name="colorPrimary">@color/blue_accent</item>
+        <item name="colorAccent">@color/blue_accent</item>
+        <item name="android:colorAccent">@color/blue_accent</item>
+        <item name="android:statusBarColor">@color/obsidian_black</item>
+        <item name="android:navigationBarColor">@color/obsidian_black</item>
+    </style>
+</resources>

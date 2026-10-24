@@ -1,0 +1,30 @@
+const test=require('node:test'),assert=require('node:assert/strict');
+const {PhoneSync}=require('../electron/services/phoneSync.cjs');
+const {normalizeMeter}=require('../electron/services/audioMeter.cjs');
+test('phone data is opt-in, bounded, and commands preserve correlation across retries',async()=>{
+ let now=100000;const service=new PhoneSync({now:()=>now});const phone={id:'fixture',capabilities:[]};
+ service.exchange(phone,{notifications:[{id:'sms',title:'Hello',text:'Message',sms:true}],status:{notifications:true}});
+ assert.deepEqual(service.snapshot(phone.id).notifications,[]);await assert.rejects(service.request(phone,{type:'files.list'}),/permission/);
+ phone.capabilities=['phoneData','phoneCamera'];service.exchange(phone,{notifications:Array.from({length:110},(_,i)=>({id:String(i),title:'X'.repeat(800),text:'Y'.repeat(4000),sms:i===0})),status:{folder:true,capture:['camera','invalid']}});
+ assert.equal(service.snapshot(phone.id).notifications.length,80);assert.equal(service.snapshot(phone.id).notifications[0].title.length,300);assert.deepEqual(service.snapshot(phone.id).status.capture,['camera']);
+ const pending=service.request(phone,{type:'files.list',parent:''});const first=service.exchange(phone,{}),retry=service.exchange(phone,{});assert.equal(first.commands[0].id,retry.commands[0].id);
+ const id=first.commands[0].id;const r=service.exchange(phone,{results:[{id,value:{items:[{name:'Photo.jpg'}]}}]});assert.deepEqual(r.ack,[id]);assert.equal((await pending).items[0].name,'Photo.jpg');assert.equal(service.exchange(phone,{}).commands.length,0);
+ const revoked=service.request(phone,{type:'capture.start',kind:'camera'});phone.capabilities=[];service.exchange(phone,{});await assert.rejects(revoked,/revoked/);assert.equal(service.snapshot(phone.id).notifications.length,0);
+ now+=16000;phone.capabilities=['phoneData'];await assert.rejects(service.request(phone,{type:'files.list'}),/background sync/);service.clear();
+});
+test('disconnect rejects outstanding phone operations and unknown commands never queue',async()=>{const s=new PhoneSync(),d={id:'p',capabilities:['phoneMic']};s.exchange(d,{});assert.throws(()=>s.request(d,{type:'shell.exec'}),/Unknown/);const p=s.request(d,{type:'capture.stop',kind:'mic'});s.revoke('p');await assert.rejects(p,/disconnected/);assert.equal(s.snapshot('p').at,0);});
+test('output meter rejects malformed levels and clamps native values without retaining audio',()=>{assert.deepEqual(normalizeMeter({available:true,peak:20,left:NaN,right:-3}),{available:true,peak:1,left:0,right:0});assert.deepEqual(normalizeMeter(null),{available:false,peak:0,left:0,right:0});});
+test('encrypted phone sync protects notifications, gates agent requests, and stops accepting a revoked device',async t=>{
+ const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),https=require('node:https');
+ const Gateway=require('../electron/services/secureGateway.cjs'),{seal,open}=require('../electron/services/secureEnvelope.cjs'),{pinClient}=require('./helpers/pinClient.cjs');
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'mohivx-sync-'));const gateway=new Gateway(0,dir,()=>{},{host:'127.0.0.1',discovery:false});t.after(()=>{gateway.stop();fs.rmSync(dir,{recursive:true,force:true});});await gateway.start();
+ const cert=JSON.parse(fs.readFileSync(path.join(dir,'companion-tls.json'))).cert;
+ const post=(route,data)=>new Promise((resolve,reject)=>{const request=https.request({hostname:'127.0.0.1',port:gateway.port,path:route,method:'POST',ca:cert,checkServerIdentity:()=>undefined},res=>{let text='';res.on('data',b=>text+=b);res.on('end',()=>resolve({status:res.statusCode,...JSON.parse(text)}));});request.on('error',reject);request.end(JSON.stringify(data));});
+ gateway.generateNewPin();const phone=await pinClient(gateway.pairing.pin);t.after(()=>phone.close());const start=await post('/api/pair/start',{A:phone.A,secure:true}),proof=await phone.proof(start,gateway.fingerprint),finish=await post('/api/pair/finish',{session:start.session,proof});await phone.verify(finish.proof);const pair=open(phone.key,'pair:'+start.session,finish.sealed);
+ const service=new PhoneSync();gateway.setProviders({phoneSync:service,agentCenter:{getAllStatuses:async()=>({pendingApprovals:[{source:'hook',id:'hook:1',agent:'codex',fingerprint:'a'.repeat(64),title:'AskUserQuestion',questions:[{question:'Choose a layout'}]}]})}});
+ let counter=0;const sync=async body=>{counter++;const scope=pair.id+':'+counter;const r=await post('/api/secure',{device:pair.id,counter,...seal(phone.key,'request:'+scope,{route:'/api/phone-sync',method:'POST',token:pair.token,body})});return open(phone.key,'response:'+scope,r);};
+ assert.equal((await post('/api/phone-sync',{})).status,401);assert.deepEqual((await sync({notifications:[{title:'Private SMS'}]})).requests,[]);assert.equal(service.snapshot(pair.id).notifications.length,0);
+ gateway.setCapabilities(pair.id,['phoneData','agents','agentApprovals']);const r=await sync({notifications:[{id:'n',title:'SMS notification',sms:true}]});assert.equal(r.requests[0].description,'Choose a layout');assert.equal(service.snapshot(pair.id).notifications[0].sms,true);
+ const device=gateway.devices[0],p=service.request(device,{type:'files.list'}),commands=(await sync({})).commands;assert.equal(commands.length,1);await sync({results:[{id:commands[0].id,value:{items:[]}}]});assert.deepEqual(await p,{items:[]});
+ gateway.revoke(pair.id);assert.equal(service.snapshot(pair.id).at,0);assert.equal((await post('/api/phone-sync',{})).status,401);
+});

@@ -1,0 +1,7 @@
+class AutoClicker{
+ constructor({click,registerStop,unregisterStop,setTimer=setInterval,clearTimer=clearInterval,notify=()=>{}}){Object.assign(this,{click,registerStop,unregisterStop,setTimer,clearTimer,notify});this.timer=null;this.completed=0;this.limit=0;this.busy=false;this.stopRegistered=false;this.generation=0;}
+ status(){return {running:this.timer!==null,completed:this.completed,total:this.limit,stopShortcut:'Control+Alt+F8'};}
+ start({perSecond=2,count=100}={}){if(!Number.isInteger(perSecond)||perSecond<1||perSecond>10||!Number.isInteger(count)||count<1||count>10000)throw Error('Choose 1–10 clicks per second and 1–10000 total clicks.');this.stop();if(!this.registerStop(()=>this.stop()))throw Error('Ctrl+Alt+F8 is in use. Choose another shortcut in the other app before starting.');this.stopRegistered=true;const run=++this.generation;this.completed=0;this.limit=count;this.timer=this.setTimer(async()=>{if(this.busy||run!==this.generation)return;this.busy=true;try{await this.click();if(this.timer!==null&&run===this.generation){this.completed++;if(this.completed>=this.limit)this.stop();}}catch{if(run===this.generation)this.stop();}finally{this.busy=false;}},Math.round(1000/perSecond));this.timer?.unref?.();this.notify(this.status());return this.status();}
+ stop(){this.generation++;if(this.timer!==null){this.clearTimer(this.timer);this.timer=null;}if(this.stopRegistered){this.unregisterStop();this.stopRegistered=false;}this.notify(this.status());return this.status();}
+}
+module.exports={AutoClicker};

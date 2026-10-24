@@ -1,0 +1,12 @@
+[
+ {"id":"skin:hitodama","kind":"skin","value":"hitodama","price":0,"name":"Hitodama","ar":"هيتوداما"},
+ {"id":"skin:ember","kind":"skin","value":"ember","price":25,"name":"Ember","ar":"جمرة"},
+ {"id":"skin:wisp","kind":"skin","value":"wisp","price":25,"name":"Wisp","ar":"وميض"},
+ {"id":"skin:amethyst","kind":"skin","value":"amethyst","price":50,"name":"Amethyst","ar":"جمشت"},
+ {"id":"skin:gilded","kind":"skin","value":"gilded","price":50,"name":"Gilded","ar":"ذهبي"},
+ {"id":"skin:void","kind":"skin","value":"void","price":100,"name":"Void","ar":"الفراغ"},
+ {"id":"ability:collapse","kind":"ability","value":"collapse","price":50,"name":"Collapse","ar":"انهيار الفضاء"},
+ {"id":"ability:sidearm","kind":"ability","value":"sidearm","price":40,"name":"Sidearm","ar":"النبضة"},
+ {"id":"ability:aura","kind":"ability","value":"aura","price":30,"name":"Aura","ar":"الهالة"},
+ {"id":"freeze","kind":"freeze","value":"freeze","price":10,"name":"Streak freeze","ar":"حماية يوم من السلسلة"}
+]

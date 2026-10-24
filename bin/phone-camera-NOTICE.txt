@@ -1,0 +1,6 @@
+MOHIVX Phone Camera uses the MIT-licensed UnityCapture DirectShow filter.
+Upstream: https://github.com/schellingb/UnityCapture
+Revision: 3ed54c325e0ad71afcf4f246c07e5e17b3d7f2d2
+Authors: Bernhard Schelling and MHD Yamen Saraiji. See LICENSE.
+Changes: device name and CLSID, MOHIVX shared-memory namespace, per-user registration.
+The Unity plugin and its artwork/samples are not included. No registration scripts run during builds.

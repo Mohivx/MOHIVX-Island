@@ -1,0 +1,1 @@
+export function notificationPreferences(value?: unknown): {notificationStyle:'compact'|'detailed';notificationMotion:'smooth'|'fade'|'instant';notificationDurationSeconds:number;notificationWidth:number};

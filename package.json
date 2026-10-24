@@ -1,0 +1,104 @@
+{
+  "name": "mohivx-island",
+  "private": true,
+  "version": "1.0.0",
+  "description": "MOHIVX Island — Premium Desktop Command Center",
+  "author": "MOHIVX",
+  "main": "electron/main.cjs",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "start": "tsc -b && vite build && electron .",
+    "build": "tsc -b && vite build",
+    "test": "node --test tests/*.test.cjs",
+    "electron:start": "electron .",
+    "package:win": "npm run build:hook && npm run build && node build/package-windows.cjs --win portable",
+    "dist:exe": "npm run build:hook && npm run build && node build/package-windows.cjs --win nsis",
+    "preview": "vite preview",
+    "build:hook": "node native/build-hook.cjs",
+    "build:mic": "node native/build-mic.cjs"
+  },
+  "build": {
+    "appId": "com.mohivx.island",
+    "productName": "MOHIVX Island",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "build/icon.ico",
+      "bin/**/*",
+      "!bin/cloudflared.exe",
+      "!electron/services/remoteLink.cjs",
+      "scripts/ask-island.cjs",
+      "scripts/island-mcp.cjs",
+      "scripts/setup-agent-routing.cjs",
+      "LICENSE"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "MOHIVX Island",
+      "runAfterFinish": true,
+      "include": "build/installer.nsh",
+      "installerLanguages": [
+        "en_US",
+        "ar_SA"
+      ],
+      "displayLanguageSelector": true,
+      "license": "LICENSE"
+    },
+    "extraResources": [
+      {
+        "from": "drivers/mohiv-mic",
+        "to": "mohiv-mic",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ]
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/canvas-confetti": "^1.9.0",
+    "canvas-confetti": "^1.9.4",
+    "lucide-react": "^1.57.0",
+    "qrcode": "1.5.4",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "selfsigned": "5.5.0",
+    "tailwindcss": "^4.3.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "electron": "^44.7.2",
+    "electron-builder": "^26.15.3",
+    "oxlint": "^1.81.0",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.0"
+  },
+  "license": "GPL-3.0-only"
+}

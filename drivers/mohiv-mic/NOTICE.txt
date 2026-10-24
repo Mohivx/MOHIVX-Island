@@ -1,0 +1,19 @@
+MOHIV Mic uses the original VB-CABLE virtual audio driver by VB-Audio Software.
+Source and donations: https://vb-audio.com/Cable/
+Licensing: https://vb-audio.com/Services/licensing.htm
+
+VB-CABLE is donationware; all contributions are welcome. The complete original
+package is included unchanged in VB-CABLE/. Read VB-CABLE/readme.txt for its
+license. Professional/institutional distribution may require paid licenses.
+
+MOHIV Mic is a Windows recording endpoint alias and automatic phone-audio
+routing provided by MOHIVX. VB-Audio remains the author of the audio driver.
+The installer does not modify the signed INF, SYS or CAT files, disable driver
+signature enforcement, add trusted-publisher certificates, set the default
+microphone, or change physical audio devices.
+
+Installing the Windows component requires administrator consent. Windows may
+require a restart. If so, a one-purpose completion task named
+MOHIVX-Mic-Finalize labels the capture endpoint after startup and removes itself
+when complete. Its helper is stored under administrator-writable Program Files.
+Removing MOHIVX does not uninstall a potentially shared VB-CABLE driver.

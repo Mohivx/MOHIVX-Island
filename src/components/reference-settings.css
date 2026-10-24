@@ -1,0 +1,660 @@
+/* reference-settings.css
+   Hitodama desktop reference layout:
+   - Rounded dark navy/purple window with central character-colored vertical glow
+   - Roomy sidebar around 250px with search pill and active section pill
+   - Content heading ~32px and caption
+   - Rounded grouped cards (#1e1e2b) with thin inset separators (#ffffff10)
+   - Sparse rows and compact right-hand controls
+   - Ample bottom space for centered floating glass dock
+   - RTL support, responsive / narrow window handling without horizontal overflow
+   - Maximized state without outer border or rounded corners
+   - Interactive draggable titlebar with clickable window buttons (-webkit-app-region: no-drag)
+*/
+
+:root {
+  --reference-bg: #10111d;
+  --reference-card: #1e1e2b;
+  --reference-border: #ffffff10;
+  --reference-border-subtle: #ffffff0a;
+  --reference-text: #e6ebf2;
+  --reference-text-muted: #8e9bb0;
+  --reference-text-dim: #6b778d;
+}
+
+/* Base application window */
+.companion-app {
+  background-color: var(--reference-bg) !important;
+  background-image:
+    radial-gradient(ellipse 70% 50% at 50% 0%, color-mix(in srgb, var(--character-glow, var(--app-accent, #6a5acd)) 18%, transparent) 0%, transparent 75%),
+    radial-gradient(ellipse 50% 60% at 50% 35%, color-mix(in srgb, var(--character-glow, var(--app-accent, #6a5acd)) 10%, transparent) 0%, transparent 80%),
+    radial-gradient(circle at 50% 100%, rgba(20, 20, 36, 0.7), transparent 70%) !important;
+  border-radius: 26px !important;
+  border: 1px solid var(--reference-border) !important;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), 0 2px 10px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+  color: var(--reference-text) !important;
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* Maximized state: zero outer radius and no fake surrounding border */
+.companion-app[data-maximized="true"] {
+  border-radius: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Titlebar & window controls */
+.companion-titlebar {
+  height: 52px !important;
+  min-height: 52px !important;
+  padding: 0 22px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  position: relative;
+  -webkit-app-region: drag;
+  user-select: none;
+  background: transparent !important;
+  border-bottom: 1px solid transparent;
+  z-index: 10;
+}
+
+.companion-titlebar > span {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  color: var(--reference-text);
+}
+
+.companion-titlebar[data-window-controls-side="left"] > span {
+  position: absolute;
+  right: 22px;
+}
+
+.companion-titlebar[data-window-controls-side="right"] > span {
+  position: absolute;
+  left: 22px;
+}
+
+.companion-titlebar[data-window-controls-side="left"] .desktop-window-controls {
+  position: absolute !important;
+  left: 22px;
+  right: auto;
+}
+
+.companion-titlebar[data-window-controls-side="right"] .desktop-window-controls {
+  position: absolute !important;
+  right: 22px;
+  left: auto;
+}
+
+.companion-titlebar button,
+.companion-titlebar .desktop-window-controls,
+.companion-titlebar .desktop-window-controls button {
+  -webkit-app-region: no-drag !important;
+}
+
+.companion-titlebar .desktop-window-controls {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+
+.companion-titlebar .desktop-window-controls button {
+  width: 32px !important;
+  height: 28px !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  color: var(--reference-text-muted) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.companion-titlebar .desktop-window-controls button:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
+}
+
+.companion-titlebar .desktop-window-controls button:last-child:hover {
+  background: #e81123 !important;
+  color: #ffffff !important;
+}
+
+/* Layout body */
+.companion-body {
+  flex: 1 1 0%;
+  min-height: 0;
+  display: flex;
+  padding: 0 24px 76px !important; /* Ample bottom space reserved for centered floating dock */
+  gap: 22px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* Sidebar (~250px) */
+.companion-sidebar,
+.settings-layout-sidebar {
+  width: 250px !important;
+  max-width: 250px !important;
+  flex: 0 0 250px !important;
+  background: rgba(255, 255, 255, 0.02) !important;
+  border: 1px solid var(--reference-border) !important;
+  border-radius: 20px !important;
+  padding: 16px 12px 14px !important;
+  margin-bottom: 4px;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-height: 0;
+}
+
+.companion-sidebar h2,
+.settings-layout-sidebar h2 {
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.2px;
+  color: var(--reference-text);
+  margin: 2px 10px 14px !important;
+}
+
+/* Search pill in sidebar */
+.settings-search {
+  display: flex !important;
+  align-items: center !important;
+  gap: 9px !important;
+  padding: 7px 12px !important;
+  min-height: 38px !important;
+  border-radius: 9999px !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid var(--reference-border) !important;
+  color: var(--reference-text-muted) !important;
+  margin-bottom: 12px !important;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.settings-search:focus-within {
+  border-color: color-mix(in srgb, var(--app-accent, #6a5acd) 50%, #ffffff20) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.settings-search input {
+  background: transparent !important;
+  border: 0 !important;
+  outline: 0 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  color: var(--reference-text) !important;
+  font-size: 12.5px !important;
+}
+
+.settings-search input::placeholder {
+  color: var(--reference-text-dim) !important;
+}
+
+.settings-search button {
+  background: transparent !important;
+  border: 0 !important;
+  color: var(--reference-text-muted) !important;
+  cursor: pointer;
+  padding: 2px !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.settings-search button:hover {
+  color: var(--reference-text) !important;
+}
+
+/* Nav list and selected row pill */
+.companion-sidebar nav,
+.settings-layout-sidebar nav {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 3px !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain;
+  flex: 1 1 0%;
+  min-height: 0;
+  padding-right: 2px;
+}
+
+.companion-sidebar nav button,
+.settings-layout-sidebar nav button {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  width: 100% !important;
+  padding: 9px 14px !important;
+  min-height: 38px !important;
+  border-radius: 9999px !important; /* Selected row pill */
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: var(--reference-text-muted) !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  text-align: start !important;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.companion-sidebar nav button:hover,
+.settings-layout-sidebar nav button:hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: var(--reference-text) !important;
+}
+
+.companion-sidebar nav button[aria-current="page"],
+.settings-layout-sidebar nav button[aria-current="page"] {
+  background: color-mix(in srgb, var(--app-accent, #6a5acd) 24%, rgba(255, 255, 255, 0.08)) !important;
+  border-color: color-mix(in srgb, var(--app-accent, #6a5acd) 45%, var(--reference-border)) !important;
+  color: #ffffff !important;
+  font-weight: 500 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.companion-sidebar nav button svg,
+.settings-layout-sidebar nav button svg {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.companion-sidebar .settings-save,
+.settings-layout-sidebar .settings-save {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--reference-text-dim);
+  padding: 10px 8px 2px;
+  margin-top: auto;
+  flex-shrink: 0;
+}
+
+/* Main Content Area */
+.companion-page,
+.settings-layout-content,
+.companion-fullpage {
+  flex: 1 1 0%;
+  min-width: 0;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding: 4px 6px 32px !important;
+  box-sizing: border-box;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.companion-page h1,
+.settings-layout-content > h1,
+.companion-fullpage h1 {
+  font-size: 32px !important; /* Content heading 32px */
+  font-weight: 500 !important;
+  line-height: 1.25 !important;
+  letter-spacing: -0.5px !important;
+  color: var(--reference-text) !important;
+  margin: 0 0 6px !important;
+}
+
+.page-caption,
+.settings-layout-content > .page-caption {
+  font-size: 13px !important;
+  line-height: 1.5 !important;
+  color: var(--reference-text-muted) !important;
+  margin: 0 0 22px !important;
+}
+
+/* Rounded grouped cards (#1e1e2b) */
+.settings-card {
+  background: var(--reference-card) !important;
+  border: 1px solid var(--reference-border) !important;
+  border-radius: 20px !important;
+  padding: 2px 20px !important;
+  margin-bottom: 20px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.22);
+  box-sizing: border-box;
+}
+
+/* Thin inset separators (#ffffff10) between rows */
+.setting-row {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 18px !important;
+  min-height: 64px !important;
+  padding: 14px 0 !important;
+  border-bottom: 1px solid var(--reference-border) !important;
+  box-sizing: border-box;
+}
+
+.settings-card .setting-row:last-child,
+.setting-row:last-of-type {
+  border-bottom: none !important;
+}
+
+.setting-row > div:first-child {
+  flex: 1 1 0%;
+  min-width: 0;
+}
+
+.setting-row b {
+  display: block;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  color: var(--reference-text);
+  line-height: 1.4;
+}
+
+.setting-row p {
+  font-size: 12px !important;
+  color: var(--reference-text-muted) !important;
+  line-height: 1.5 !important;
+  margin: 3px 0 0 !important;
+  max-width: 480px;
+}
+
+/* Compact right-hand controls */
+.row-control {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 8px !important;
+  flex: 0 0 auto !important;
+}
+
+.companion-app select,
+.companion-app .city-input,
+.settings-layout-content select,
+.settings-layout-content input:not([type="checkbox"]):not([type="color"]):not([type="range"]) {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid var(--reference-border) !important;
+  border-radius: 12px !important;
+  padding: 6px 12px !important;
+  font-size: 12.5px !important;
+  color: var(--reference-text) !important;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.companion-app select:focus,
+.companion-app .city-input:focus {
+  border-color: color-mix(in srgb, var(--app-accent, #6a5acd) 60%, #fff) !important;
+}
+
+.companion-app .subtle-button {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid var(--reference-border) !important;
+  border-radius: 14px !important;
+  padding: 6px 13px !important;
+  min-height: 32px !important;
+  font-size: 12px !important;
+  color: var(--reference-text) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.companion-app .subtle-button:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+/* Clean compact toggles */
+.companion-app .setting-toggle {
+  width: 42px !important;
+  height: 24px !important;
+  padding: 2px !important;
+  border-radius: 9999px !important;
+  background: rgba(255, 255, 255, 0.16) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  display: flex;
+  align-items: center;
+  direction: ltr !important;
+}
+
+.setting-toggle span {
+  width: 18px !important;
+  height: 18px !important;
+  border-radius: 50% !important;
+  background: #ffffff !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  transition: transform 0.2s ease, background-color 0.2s ease;
+}
+
+.companion-app .setting-toggle[data-on="true"] {
+  background: color-mix(in srgb, var(--app-accent, #6a5acd) 80%, #7bd18b) !important;
+}
+
+.setting-toggle[data-on="true"] span {
+  transform: translateX(18px) !important;
+}
+
+/* Floating Glass Dock (.companion-dock) */
+.companion-dock {
+  position: absolute !important;
+  bottom: 14px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  z-index: 50 !important;
+  margin: 0 !important;
+  height: 48px !important;
+  min-height: 48px !important;
+  padding: 4px 6px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 3px !important;
+  direction: ltr !important;
+  box-sizing: border-box;
+
+  /* Glass backdrop and subtle inset highlight */
+  background: rgba(19, 21, 33, 0.72) !important;
+  backdrop-filter: blur(24px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(160%) !important;
+  border: 1px solid var(--reference-border) !important;
+  border-radius: 9999px !important;
+  box-shadow:
+    0 12px 36px rgba(0, 0, 0, 0.45),
+    0 2px 8px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Moving indicator supplied by parent */
+.companion-dock .glass-dock-indicator {
+  position: absolute !important;
+  top: 4px;
+  bottom: 4px;
+  border-radius: 9999px !important;
+  background: color-mix(in srgb, var(--app-accent, #6a5acd) 28%, rgba(255, 255, 255, 0.14)) !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+  pointer-events: none;
+  z-index: 1;
+  transition: transform 0.24s cubic-bezier(0.2, 0.9, 0.25, 1), width 0.24s cubic-bezier(0.2, 0.9, 0.25, 1) !important;
+}
+
+/* Dock buttons themselves are transparent to allow moving indicator to show through cleanly */
+.companion-dock button {
+  position: relative !important;
+  z-index: 2 !important;
+  height: 38px !important;
+  min-width: 40px !important;
+  padding: 0 12px !important;
+  border-radius: 9999px !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: var(--reference-text-muted) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 7px !important;
+  font-size: 12.5px !important;
+  font-weight: 400 !important;
+  cursor: pointer;
+  transition: color 0.15s ease, opacity 0.15s ease;
+  user-select: none;
+}
+
+.companion-dock button:hover {
+  color: #ffffff !important;
+  background: transparent !important;
+}
+
+.companion-dock button[aria-current="page"] {
+  color: #ffffff !important;
+  font-weight: 500 !important;
+  background: transparent !important; /* DO NOT add competing background */
+  box-shadow: none !important;
+}
+
+.companion-dock button > span {
+  font-size: 12px;
+  letter-spacing: 0.1px;
+}
+
+/* RTL Support */
+[dir="rtl"] .companion-app {
+  text-align: right;
+}
+
+[dir="rtl"] .companion-sidebar nav button,
+[dir="rtl"] .settings-layout-sidebar nav button {
+  text-align: right !important;
+}
+
+[dir="rtl"] .setting-row {
+  flex-direction: row;
+}
+
+[dir="rtl"] .row-control {
+  justify-content: flex-start !important;
+}
+
+/* Floating dock retains LTR internally or mirrors cleanly */
+[dir="rtl"] .companion-dock {
+  direction: ltr !important;
+}
+
+/* Responsive & Narrow / Resized Window Support (No Horizontal Overflow) */
+@media (max-width: 860px) {
+  .companion-body {
+    padding: 0 16px 74px !important;
+    gap: 16px;
+  }
+  .companion-sidebar,
+  .settings-layout-sidebar {
+    width: 210px !important;
+    max-width: 210px !important;
+    flex: 0 0 210px !important;
+    padding: 12px 8px 10px !important;
+  }
+  .companion-sidebar nav button,
+  .settings-layout-sidebar nav button {
+    padding: 8px 10px !important;
+    font-size: 12px !important;
+    gap: 9px !important;
+  }
+  .companion-page h1,
+  .settings-layout-content > h1,
+  .companion-fullpage h1 {
+    font-size: 26px !important;
+  }
+  .settings-card {
+    padding: 2px 14px !important;
+  }
+  .setting-row {
+    gap: 12px !important;
+  }
+  .setting-row p {
+    max-width: 320px;
+  }
+}
+
+@media (max-width: 680px) {
+  .companion-body {
+    flex-direction: column !important;
+    padding: 0 12px 76px !important;
+    gap: 12px;
+  }
+  .companion-sidebar,
+  .settings-layout-sidebar {
+    width: 100% !important;
+    max-width: 100% !important;
+    flex: 0 0 auto !important;
+    max-height: 180px;
+  }
+  .companion-sidebar nav,
+  .settings-layout-sidebar nav {
+    flex-direction: row !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    padding-bottom: 6px;
+  }
+  .companion-sidebar nav button,
+  .settings-layout-sidebar nav button {
+    white-space: nowrap;
+    width: auto !important;
+  }
+  .setting-row {
+    flex-wrap: wrap;
+    gap: 8px !important;
+  }
+  .setting-row > div:first-child {
+    flex-basis: 100%;
+  }
+  .row-control {
+    width: 100%;
+    justify-content: flex-start !important;
+  }
+  .companion-dock {
+    max-width: calc(100vw - 24px);
+    overflow-x: auto;
+  }
+}
+.companion-dock .glass-dock-indicator{left:0!important;top:0!important;pointer-events:none}
+.loadout-content .soul-picker{position:absolute;inset:44px 0 0;width:auto;max-height:none;min-width:0;border:0;border-radius:18px;background:var(--reference-bg,#10111d);padding:18px 22px;z-index:4;overflow:auto;box-shadow:none}.soul-picker .picker-heading{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}.soul-picker .loadout-carousel-container{margin:auto}.soul-picker .loadout-card-stage{touch-action:pan-y}
+.companion-page,.companion-fullpage{animation:none!important;min-height:0}.loadout-content{position:relative;min-height:520px}.loadout-content .soul-picker{transform:none!important;margin-top:0;scroll-padding-top:0}
+.companion-app{background-image:radial-gradient(ellipse 30% 115% at 47% 65%,color-mix(in srgb,var(--character-glow,#8ab4ff) 6%,#b5aea526),transparent 75%)!important}.companion-sidebar .settings-search{height:40px!important;min-height:40px!important;padding:0 12px!important}.companion-sidebar .settings-search input{padding:0!important;background:none!important;border:0!important;box-shadow:none!important}.companion-sidebar nav button{font-size:14px!important;border-color:transparent!important}.companion-sidebar nav button[aria-current=page]{border-color:transparent!important}.loadout-content:has(.soul-picker) .soul-orbit{visibility:hidden;pointer-events:none}.desktop-window-controls button:last-child{border-radius:50%;background:#ffffff08}.settings-layout-content>.setting-row{border-radius:20px!important;padding:15px 18px!important;margin-bottom:8px;background:var(--reference-card)}
+.companion-app{background-image:radial-gradient(ellipse calc(30% * var(--character-glow-spread,1)) 115% at 47% 65%,color-mix(in srgb,var(--character-glow,#8ab4ff) calc(6% * var(--character-glow-strength,1)),#b5aea526),transparent 75%)!important}
+
+/* Optional AMOLED surface across settings and the companion shell. */
+.companion-app[data-settings-theme="black"] {
+  --reference-bg: #000000 !important;
+  --reference-card: #09090b !important;
+  --reference-border: #202124 !important;
+  background: #000000 !important;
+  background-image: none !important;
+  backdrop-filter: none !important;
+}
+.companion-app[data-settings-theme="black"] .companion-sidebar,
+.companion-app[data-settings-theme="black"] .settings-layout-sidebar {
+  background: #070708 !important;
+  border-color: #1d1d20 !important;
+}
+.companion-app[data-settings-theme="black"] .settings-card {
+  background: #080809 !important;
+}
+.companion-app[data-settings-theme="black"] .settings-disclosure,
+.companion-app[data-settings-theme="black"] .settings-preview-card {
+  background: #050506 !important;
+  border-color: #1d1d20 !important;
+}
+.companion-app[data-settings-theme="black"] .companion-dock {
+  background: linear-gradient(#131315, #080809) !important;
+  border-color: #262629 !important;
+}

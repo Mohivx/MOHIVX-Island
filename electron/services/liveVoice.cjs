@@ -1,0 +1,31 @@
+const {randomUUID}=require('node:crypto');
+class LiveVoice {
+ constructor({getSettings,getTools=()=>[],executeTool=async()=>({error:'Tool unavailable'}),emit=()=>{},onTurn=()=>{},turnContext=()=>null,makeSocket=url=>new WebSocket(url),timeoutMs=12000}){Object.assign(this,{getSettings,getTools,executeTool,emit,onTurn,turnContext,makeSocket,timeoutMs});this.current=null;}
+ start(owner,sessionId=randomUUID()){const s=this.getSettings();if(s.localOnlyMode||s.aiEnabled===false||s.voiceInputEnabled===false)throw Error('Voice or cloud access is disabled.');if(!s.geminiKey)throw Error('Add a Gemini API key first.');if(this.current)throw Error('A voice conversation is already running.');const model=String(s.liveVoiceModel||'gemini-3.8-live').replace(/^models\//,'');if(!/^[a-zA-Z0-9._-]{3,120}$/.test(model))throw Error('Invalid live model.');
+  const state={owner,sessionId,socket:null,ready:false,closed:false,input:'',output:'',turnId:randomUUID(),context:null,canceled:new Set(),handled:new Set()};this.current=state;
+  return new Promise((resolve,reject)=>{state.reject=reject;const fail=message=>{if(this.current!==state)return;this.emit(owner,{sessionId,type:'error',message});this.stop(owner,message);};state.timer=setTimeout(()=>fail('Voice connection timed out.'),this.timeoutMs);state.timer.unref?.();
+   try{const socket=this.makeSocket('wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key='+encodeURIComponent(s.geminiKey));state.socket=socket;
+    socket.onopen=()=>{if(this.current!==state)return;try{socket.send(JSON.stringify({setup:{model:'models/'+model,generationConfig:{responseModalities:['AUDIO'],speechConfig:{voiceConfig:{prebuiltVoiceConfig:{voiceName:s.activeVoice||'Charon'}}}},systemInstruction:{parts:[{text:s.systemPrompt||s.customDirectives||'Be helpful and concise.'}]},inputAudioTranscription:{},outputAudioTranscription:{},realtimeInputConfig:{automaticActivityDetection:{silenceDurationMs:s.replySpeed==='fast'?350:850,prefixPaddingMs:120}},tools:[{functionDeclarations:this.getTools()}]}}));}catch{fail('Voice setup could not be sent.');}};
+    socket.onmessage=async event=>{if(this.current!==state)return;try{const raw=typeof event.data==='string'?event.data:typeof event.data?.text==='function'?await event.data.text():Buffer.from(event.data).toString();if(raw.length>4000000)throw Error('Voice packet too large.');const message=JSON.parse(raw);if(this.current!==state)return;
+     if(message.setupComplete){state.ready=true;clearTimeout(state.timer);state.reject=null;this.emit(owner,{sessionId,type:'ready'});resolve({success:true});}
+     if(message.error){fail('The voice service rejected the session. Check your key, model and quota.');return;}
+     if(message.goAway){this.emit(owner,{sessionId,type:'notice',message:'The voice session will end soon. Start a new conversation when it closes.'});}
+     if(message.toolCallCancellation)for(const id of message.toolCallCancellation.ids||[])state.canceled.add(id);
+     const content=message.serverContent;
+     if(content){if(content.interrupted){this.emit(owner,{sessionId,type:'interrupt'});if(state.input||state.output)this.finishTurn(state);}
+      if(content.inputTranscription?.text){if(!state.input)state.context=this.turnContext();state.input+=content.inputTranscription.text;this.emit(owner,{sessionId,type:'input',text:state.input});}
+      if(content.outputTranscription?.text){state.output+=content.outputTranscription.text;this.emit(owner,{sessionId,type:'output',text:state.output});}
+      for(const part of content.modelTurn?.parts||[]){const audio=part.inlineData;if(audio?.data&&/^audio\/(pcm|L16)/i.test(audio.mimeType||''))this.emit(owner,{sessionId,type:'audio',data:audio.data,rate:24000});}
+      if(content.turnComplete){this.finishTurn(state);this.emit(owner,{sessionId,type:'turn-complete'});}
+     }
+     if(message.toolCall?.functionCalls){const responses=[];for(const call of message.toolCall.functionCalls.slice(0,16)){if(this.current!==state||state.canceled.has(call.id)||state.handled.has(call.id))continue;state.handled.add(call.id);let result;try{if(!this.getTools().some(t=>t.name===call.name))throw Error('Tool unavailable.');this.emit(owner,{sessionId,type:'tool',name:call.name});result=await this.executeTool(call.name,call.args||{},()=>this.current===state&&!state.canceled.has(call.id));}catch{result={error:'Action failed or was canceled.'};}if(this.current===state&&!state.canceled.has(call.id))responses.push({id:call.id,name:call.name,response:{result}});}if(responses.length&&this.current===state&&socket.readyState===1)socket.send(JSON.stringify({toolResponse:{functionResponses:responses}}));}
+    }catch{fail('Voice response could not be read. Please reconnect.');}};
+    socket.onerror=()=>fail('Voice connection failed. Check the network, API key and model.');socket.onclose=()=>{if(this.current===state)this.stop(owner,'Voice session ended.');};
+   }catch{fail('Voice connection could not start.');}
+  });
+ }
+ finishTurn(state){if(state.input||state.output)this.onTurn({id:state.turnId,input:state.input,output:state.output,context:state.context});state.input='';state.output='';state.context=null;state.turnId=randomUUID();}
+ audio(owner,value,sessionId){const s=this.current;if(!s||s.owner!==owner||(sessionId!==undefined&&s.sessionId!==sessionId)||!s.ready||s.socket.readyState!==1)return false;const settings=this.getSettings();if(settings.localOnlyMode||settings.voiceInputEnabled===false||settings.aiEnabled===false){this.stop(owner);return false;}let bytes;try{bytes=Buffer.from(value);}catch{return false;}if(!bytes.length||bytes.length%2||bytes.length>16000||s.socket.bufferedAmount>64000)return false;s.socket.send(JSON.stringify({realtimeInput:{audio:{data:bytes.toString('base64'),mimeType:'audio/pcm;rate=16000'}}}));return true;}
+ stop(owner,reason='Voice stopped.',sessionId){const s=this.current;if(!s||(owner!==undefined&&owner!==s.owner)||(sessionId!==undefined&&s.sessionId!==sessionId))return false;this.current=null;s.closed=true;clearTimeout(s.timer);if(s.reject){s.reject(Error(reason));s.reject=null;}try{s.socket?.close();}catch{}this.emit(s.owner,{sessionId:s.sessionId,type:'closed',message:reason});return true;}
+}
+module.exports={LiveVoice};

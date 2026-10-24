@@ -1,0 +1,4 @@
+const {randomUUID}=require('node:crypto');
+const text=(v,n)=>String(v||'').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g,'').trim().slice(0,n);
+function createNotificationDelivery({getSettings,sendToIsland,showWindowsToast,now=Date.now}){return input=>{const s=getSettings(),source=['windows','phone','mohivx'].includes(input.source)?input.source:'mohivx';const notice={id:text(input.id||randomUUID(),160),source,app:text(input.app||'MOHIVX',100),title:text(input.title,200),body:text(input.body,1000),time:input.time||now()};if(!notice.title&&!notice.body)return false;if(s.islandNotificationsEnabled!==false&&(source!=='windows'||s.windowsNotificationsEnabled!==false))sendToIsland(notice);if(source==='mohivx'&&s.mohivxToastsEnabled===true)showWindowsToast(notice);return true;};}
+module.exports={createNotificationDelivery};

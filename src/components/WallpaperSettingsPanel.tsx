@@ -1,0 +1,25 @@
+import {useEffect,useState} from 'react';
+import {Folder,FolderPlus,ImagePlus,EyeOff,Trash2,RotateCcw} from 'lucide-react';
+import {ipc} from '../hooks/useSettings';
+import type {WallpaperItem} from '../types';
+type Item=WallpaperItem&{owned?:boolean};
+export function WallpaperSettingsPanel({ar=false}:{ar?:boolean}){
+ const [items,setItems]=useState<Item[]>([]),[folder,setFolder]=useState(''),[hidden,setHidden]=useState(0),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[remove,setRemove]=useState<Item|null>(null);
+ const t=(en:string,a:string)=>ar?a:en;
+ const load=async()=>{if(!ipc)return;const result=await ipc.invoke('get-wallpaper-library');if(result&&Array.isArray(result.items)){setItems(result.items);setFolder(result.folder||'');setHidden(result.hiddenCount||0);}};
+ useEffect(()=>{let live=true;const refresh=()=>{if(live)void load().catch(()=>setMessage(t('Could not load the library.','تعذر تحميل المكتبة.')));};refresh();ipc?.on('wallpapers-updated',refresh);return()=>{live=false;ipc?.removeListener('wallpapers-updated',refresh);};},[]);
+ const action=async(run:()=>Promise<any>,success:string)=>{if(!ipc)return;setBusy(true);setMessage('');try{const result=await run();if(result?.error||result?.success===false)throw Error(result.error||t('Action failed.','تعذر تنفيذ الإجراء.'));if(!result?.canceled){await load();setMessage(result?.warnings?t('Removed from the library; some copies could not be recycled.','أُزيلت من المكتبة؛ تعذر نقل بعض النسخ إلى السلة.'):success);}}catch(e){setMessage(e instanceof Error?e.message:t('Action failed.','تعذر تنفيذ الإجراء.'));}finally{setBusy(false);}};
+ return <section className="settings-card wallpaper-settings-panel" aria-label={t('Wallpaper library','مكتبة الخلفيات')}><h3>{t('Wallpaper library','مكتبة الخلفيات')}</h3>
+  <div className="extras-actions" style={{display:'flex',flexWrap:'wrap',gap:8}}>
+   <button className="subtle-button" disabled={!ipc||busy} onClick={()=>ipc?.send('open-wallpapers-folder')}><Folder size={13}/>{t('Open library folder','فتح مجلد المكتبة')}</button>
+   <button className="subtle-button" disabled={!ipc||busy} onClick={()=>void action(()=>ipc!.invoke('select-wallpaper-folder'),t('Folder selected.','تم اختيار المجلد.'))}><FolderPlus size={13}/>{t('Choose own folder','اختيار مجلدك')}</button>
+   <button className="subtle-button" disabled={!ipc||busy} onClick={()=>void action(()=>ipc!.invoke('select-wallpaper-file'),t('Image added.','أُضيفت الصورة.'))}><ImagePlus size={13}/>{t('Add image','إضافة صورة')}</button>
+   <button className="subtle-button" disabled={!ipc||busy} onClick={()=>void action(()=>ipc!.invoke('restore-default-wallpapers'),t('Built-in library restored.','استُعيدت المكتبة المدمجة.'))}><RotateCcw size={13}/>{t('Restore defaults','استعادة الافتراضيات')}{hidden>0?' ('+hidden+')':''}</button>
+  </div>
+  {folder&&<p className="setting-help" dir="auto">{t('Your folder: ','مجلدك: ')}{folder}</p>}
+  <p className="setting-help">{t('Select an image to apply it. Remove hides it from the library; only copies stored by MOHIVX can be moved to the Recycle Bin.','اضغط الصورة لتطبيقها. الإزالة تخفيها من المكتبة؛ يمكن نقل نسخ MOHIVX المحلية فقط إلى سلة المهملات.')}</p>
+  {remove&&<div role="dialog" aria-label={t('Recycle wallpaper copy','حذف نسخة الخلفية')} className="settings-card"><b>{remove.name}</b><p>{t('Move local MOHIVX copies to the Recycle Bin? Originals in your own folders stay in place.','نقل نسخ MOHIVX المحلية إلى السلة؟ تبقى الصور الأصلية في مجلداتك بمكانها.')}</p><div className="extras-actions"><button className="subtle-button" disabled={busy} onClick={()=>{const item=remove;setRemove(null);void action(()=>ipc!.invoke('remove-wallpaper-item',{id:item.id,trashOwned:true}),t('Copies moved to Recycle Bin.','نُقلت النسخ إلى السلة.'));}}>{t('Move to Recycle Bin','نقل إلى سلة المهملات')}</button><button className="subtle-button" onClick={()=>setRemove(null)}>{t('Cancel','إلغاء')}</button></div></div>}
+  <div className="wallpaper-library-grid">{items.map(item=><article key={item.id} data-wallpaper-id={item.id}><button type="button" className="wallpaper-library-preview" disabled={busy} aria-label={t('Apply wallpaper: ','تطبيق الخلفية: ')+item.name} onClick={()=>void action(()=>ipc!.invoke('set-wallpaper',{filePath:item.filePath}),t('Wallpaper applied.','طُبّقت الخلفية.'))}><img src={item.url} alt={item.name}/></button><span dir="auto">{item.name}</span><div><button className="subtle-button" disabled={busy} aria-label={t('Remove wallpaper: ','إزالة الخلفية: ')+item.name} onClick={()=>void action(()=>ipc!.invoke('remove-wallpaper-item',{id:item.id}),t('Removed from library.','أُزيلت من المكتبة.'))}><EyeOff size={12}/>{t('Remove','إزالة')}</button>{item.owned&&<button className="subtle-button" disabled={busy} aria-label={t('Recycle wallpaper: ','نقل الخلفية للسلة: ')+item.name} onClick={()=>setRemove(item)}><Trash2 size={12}/></button>}</div></article>)}</div>
+  {!items.length&&<p>{t('No wallpapers. Add an image or choose a folder.','لا توجد خلفيات. أضف صورة أو اختر مجلدًا.')}</p>}{message&&<p role="status" className="setting-help">{message}</p>}
+ </section>;
+}

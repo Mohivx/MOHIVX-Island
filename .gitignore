@@ -1,0 +1,69 @@
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependencies
+node_modules/
+
+# Production builds
+dist/
+dist-ssr/
+release/
+*.local
+
+# Local experiments never belong to stable releases.
+/experiments/
+.gradle/
+android/app/build/
+native/camera/build/
+native/agent-hook/target/
+*.tsbuildinfo
+local.properties
+*.apk
+*.aab
+*.exe
+*.dll
+*.pdb
+
+# Signing material and per-user connection state stay on this computer.
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+signing.properties
+keystore.properties
+hook-link.json
+credentials.json
+app-settings.json
+*.mohivx-backup-*
+*.mohivx-*
+
+# Environment & Secrets
+.env
+.env.*
+*.env
+
+# Large archives and video references
+*.zip
+*.tar
+*.gz
+*.mp4
+DESIGN-REFERENCES/
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

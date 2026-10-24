@@ -1,0 +1,307 @@
+/* loadout-cards.css
+   Generic reusable card stack carousel picker for LoadoutHub & .soul-picker
+   - Centered card stack about ~1/3 of available width
+   - Large current card (approx 260x340, responsive)
+   - 1-2 rotated offset ghost cards behind
+   - Primary Use / Active / Unavailable button, secondary button (voice preview)
+   - Bottom previous/next arrow buttons + index / count
+   - RTL & reduced motion support
+*/
+
+.loadout-carousel-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 12px 0 16px;
+  box-sizing: border-box;
+  user-select: none;
+  position: relative;
+}
+
+/* Soul picker context fit */
+.soul-picker .loadout-carousel-container {
+  padding: 8px 0 12px;
+}
+
+/* Card stack viewport - centered about 1/3 available container width */
+.loadout-card-stage {
+  position: relative;
+  width: clamp(240px, 32%, 300px);
+  height: 340px;
+  perspective: 1000px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+  touch-action: pan-y;
+  cursor: grab;
+}
+
+.loadout-card-stage:active {
+  cursor: grabbing;
+}
+
+/* Ghost and active card elements */
+.loadout-card {
+  position: absolute;
+  width: 100%;
+  max-width: 280px;
+  height: 330px;
+  border-radius: 20px;
+  background: #1e1e2b;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  padding: 18px 16px 14px;
+  box-sizing: border-box;
+  transform-origin: center bottom;
+  transition: transform 0.28s cubic-bezier(0.2, 0.85, 0.3, 1),
+              opacity 0.28s cubic-bezier(0.2, 0.85, 0.3, 1),
+              box-shadow 0.28s ease,
+              border-color 0.28s ease;
+  pointer-events: none;
+}
+
+/* Front / Active card */
+.loadout-card.card-active {
+  z-index: 10;
+  pointer-events: auto;
+  transform: translate3d(var(--drag-offset, 0px), 0, 0) scale(1) rotate(var(--drag-rotation, 0deg));
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 20px 42px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.loadout-card.card-active.is-selected {
+  border-color: color-mix(in srgb, var(--app-accent, #6a5acd) 60%, rgba(255, 255, 255, 0.25));
+  box-shadow: 0 20px 44px rgba(0, 0, 0, 0.55),
+              0 0 24px color-mix(in srgb, var(--app-accent, #6a5acd) 25%, transparent),
+              inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+/* Ghost card 1 behind (Right / Forward in LTR) */
+.loadout-card.card-ghost-next {
+  z-index: 5;
+  transform: translate3d(24px, 4px, -30px) rotate(4.5deg) scale(0.94);
+  opacity: 0.65;
+  background: #181924;
+}
+
+/* Ghost card 2 behind (Left / Previous in LTR) */
+.loadout-card.card-ghost-prev {
+  z-index: 4;
+  transform: translate3d(-24px, 4px, -30px) rotate(-4.5deg) scale(0.94);
+  opacity: 0.65;
+  background: #181924;
+}
+
+/* Deeper ghost layers if present */
+.loadout-card.card-ghost-deep {
+  z-index: 1;
+  transform: translate3d(0, 10px, -60px) scale(0.88);
+  opacity: 0.25;
+}
+
+/* Card contents */
+.loadout-card-preview {
+  flex: 1 1 auto;
+  min-height: 110px;
+  max-height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+  position: relative;
+}
+
+.loadout-card-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.loadout-card-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #f0f4f9;
+  margin: 0 0 2px;
+  line-height: 1.3;
+}
+
+.loadout-card-subtitle {
+  font-size: 11.5px;
+  color: var(--app-accent, #8bbcff);
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.loadout-card-description {
+  font-size: 11px;
+  color: #8d98aa;
+  line-height: 1.45;
+  margin: 0;
+  max-width: 90%;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Card actions at the bottom of the card */
+.loadout-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  margin-top: auto;
+}
+
+.loadout-card-actions .loadout-button-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.loadout-primary-btn {
+  flex: 1 1 auto;
+  height: 34px;
+  border-radius: 12px;
+  background: var(--app-accent, #6a5acd);
+  color: #ffffff;
+  font-size: 12.5px;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  transition: opacity 0.15s ease, transform 0.15s ease, filter 0.15s ease;
+}
+
+.loadout-primary-btn:hover:not(:disabled) {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.loadout-primary-btn.is-active-btn {
+  background: rgba(255, 255, 255, 0.12);
+  color: #8ade9f;
+  border: 1px solid rgba(138, 222, 159, 0.3);
+  cursor: default;
+}
+
+.loadout-primary-btn:disabled:not(.is-active-btn) {
+  background: rgba(255, 255, 255, 0.06);
+  color: #636e80;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.loadout-secondary-btn {
+  flex: 0 0 auto;
+  height: 34px;
+  padding: 0 11px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #cad4e2;
+  font-size: 11.5px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.loadout-secondary-btn:hover {
+  background: rgba(255, 255, 255, 0.13);
+  color: #ffffff;
+}
+
+/* Bottom carousel navigation bar */
+.loadout-carousel-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 14px;
+}
+
+.loadout-nav-arrow {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #a8b5c8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.loadout-nav-arrow:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.loadout-nav-arrow:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.loadout-carousel-counter {
+  font-size: 12px;
+  font-weight: 500;
+  color: #8794a8;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+  min-width: 44px;
+  text-align: center;
+}
+
+/* RTL orientation */
+[dir="rtl"] .loadout-card.card-ghost-next {
+  transform: translate3d(-24px, 4px, -30px) rotate(-4.5deg) scale(0.94);
+}
+
+[dir="rtl"] .loadout-card.card-ghost-prev {
+  transform: translate3d(24px, 4px, -30px) rotate(4.5deg) scale(0.94);
+}
+
+/* Accessibility & Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .loadout-card,
+  .loadout-primary-btn,
+  .loadout-secondary-btn,
+  .loadout-nav-arrow {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* Responsive adjustment */
+@media (max-width: 600px) {
+  .loadout-card-stage {
+    width: 240px;
+    height: 320px;
+  }
+  .loadout-card {
+    height: 310px;
+    padding: 14px 12px 12px;
+  }
+  .loadout-card-title {
+    font-size: 15px;
+  }
+}
