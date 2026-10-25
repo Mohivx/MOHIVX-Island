@@ -1,34 +1,32 @@
-# MOHIVX Island 1.1.0
+# MOHIVX Island 1.1.1
 
 ## What's new
 
-- Clearer phone screen and camera sharing controls, with separate open-window actions and reliable stop behavior.
-- Phone preview layout uses the device's screen proportions and available wallpaper or live-screen image.
-- Island width and height can be adjusted independently while collapsed.
-- Gemini chat and agent requests can use a saved backup key when the primary key is unavailable.
-- The Power tab is hidden by default and can still be enabled in tab settings.
-- README and release information are now bilingual (Arabic and English).
-- This desktop release does not include a new Android APK. The matching signing key is unavailable, so a replacement cannot safely update the previously installed app.
+- Reworked customization settings to show the Control Centre page layout directly, with drag reordering, right-click visibility, and a clear default page.
+- Added an independent settings direction: follow the app language, force left-to-right, or force right-to-left.
+- Removed duplicate tab controls and redundant shortcuts from customization.
+- Renamed the settings appearance choice to Original and Black.
+- Built the Android APK with version 1.1.1 and the same signing certificate as earlier MOHIVX Island APKs, so it can update an existing installation.
+- Windows installer updates include the matching latest.yml and blockmap files.
 
-## التحسينات
+## الجديد
 
-- توضيح أزرار مشاركة شاشة الهاتف والكاميرا، وفصل فتح نافذة العرض عن بدء/إيقاف المشاركة.
-- معاينة الهاتف تراعي أبعاد شاشته وتعرض الخلفية المتاحة أو صورة البث المباشر.
-- ضبط عرض الجزيرة وارتفاعها كلٌّ على حدة عند تصغيرها.
-- يمكن لطلبات Gemini في المحادثة والوكلاء استخدام مفتاح احتياطي محفوظ عند تعذر المفتاح الأساسي.
-- إخفاء تبويب الطاقة افتراضيًا مع بقائه قابلًا للإظهار من إعدادات التبويبات.
-- تحديث وصف المشروع وملاحظات الإصدار باللغتين العربية والإنجليزية.
-- لا يتضمن هذا الإصدار المكتبي APK جديدًا. مفتاح التوقيع المطابق غير متوفر، لذلك لا يمكن تجهيز APK يحدّث النسخة المثبتة بأمان.
+- إعادة ترتيب إعدادات التخصيص لإظهار ترتيب صفحات مركز التحكم مباشرة، مع السحب لإعادة الترتيب، والنقر بزر الفأرة الأيمن للإخفاء، وتحديد الصفحة الافتراضية.
+- إضافة اتجاه مستقل للإعدادات: تلقائي حسب لغة التطبيق، أو من اليسار لليمين، أو من اليمين لليسار.
+- إزالة أدوات التبويبات المكررة والاختصارات الزائدة من صفحة التخصيص.
+- تسمية مظهري الإعدادات «الأصلية» و«أسود».
+- بناء APK بإصدار 1.1.1 وبشهادة التوقيع نفسها للنسخ السابقة، ليقبل التحديث فوق النسخة المثبتة.
+- يتضمن مثبّت Windows ملفات التحديث المطابقة latest.yml وblockmap.
 
 ## Downloads | ملفات التحميل
 
-- **Windows portable:** MOHIVX Island 1.1.0.exe
-- **Windows installer:** MOHIVX-Island-Setup-1.1.0.exe
-- **Android:** No APK is attached to this desktop release.
+- **Windows portable:** MOHIVX Island 1.1.1.exe
+- **Windows installer:** MOHIVX-Island-Setup-1.1.1.exe
+- **Android:** MOHIVX Island 1.1.1.apk
 
-- **نسخة Windows المحمولة:** MOHIVX Island 1.1.0.exe
-- **مثبّت Windows:** MOHIVX-Island-Setup-1.1.0.exe
-- **Android:** لا يوجد APK مرفق بهذا الإصدار المكتبي.
+- **نسخة Windows المحمولة:** MOHIVX Island 1.1.1.exe
+- **مثبّت Windows:** MOHIVX-Island-Setup-1.1.1.exe
+- **Android:** MOHIVX Island 1.1.1.apk
 
 ## License | الترخيص
 

@@ -29,7 +29,7 @@ class AcpClient extends EventEmitter {
     const end = () => { if (this.proc !== proc) return; this.proc=null; this.sessionId=null; this.busy=false; for (const p of this.pending.values()) {clearTimeout(p.timer);p.reject(new Error('Hermes process ended.'));} this.pending.clear(); for (const p of this.permissions.values()) clearTimeout(p.timer); this.permissions.clear(); this.event('closed','Hermes'); };
     proc.on('error',end); proc.on('exit',end);
     try {
-      await this.request('initialize',{protocolVersion:1,clientInfo:{name:'mohivx-island',version:'1.1.0'},clientCapabilities:{fs:{readTextFile:false,writeTextFile:false},terminal:false}},30000);
+      await this.request('initialize',{protocolVersion:1,clientInfo:{name:'mohivx-island',version:'1.1.1'},clientCapabilities:{fs:{readTextFile:false,writeTextFile:false},terminal:false}},30000);
       const session = await this.request('session/new',{cwd:this.cwd,mcpServers:[]},60000); this.sessionId=session.sessionId; this.event('connected','Hermes ACP');
     } catch(e) { this.close(); throw e; }
   }

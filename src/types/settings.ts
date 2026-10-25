@@ -41,6 +41,7 @@ export interface PairedAndroidDevice {
 
 export interface MohivxSettings {
   settingsTheme: 'pc' | 'black';
+  settingsDirection:'auto'|'ltr'|'rtl';
   advancedMode:boolean;
   uiSounds:boolean;uiSoundVolume:number;abilitySoundVolume:number;liveVoiceModel:string;replySpeed:'fast'|'patient';
   historySide:'left'|'right';
@@ -200,6 +201,7 @@ export interface MohivxSettings {
 
 export const DEFAULT_MOHIVX_SETTINGS: MohivxSettings = {
   settingsTheme: 'pc',
+  settingsDirection:'auto',
   displayId:'primary', hideWhileFullscreen:false, showReactions:true, showActionCards:true, autoCloseDictation:false, memoryEnabled:false, agentMemory:'',
   advancedMode:false,
   uiSounds:true,uiSoundVolume:.12,abilitySoundVolume:.16,liveVoiceModel:'gemini-3.8-live',replySpeed:'patient',

@@ -29,6 +29,7 @@ export function normalizeSettings(value: any = {}): CompanionSettings {
     ...base, activeSkin: 'hitodama', activeVoice: 'Charon', activePersonality: 'True Chad',
     activeAbility: '', tavilyKey: '', responseStyle: 'concise', aiPersonality: 'chad', ...value,
     settingsTheme: value.settingsTheme === 'black' ? 'black' : 'pc',
+    settingsDirection: ['ltr','rtl'].includes(value.settingsDirection) ? value.settingsDirection : 'auto',
     musicTheme: ['off','player','edge-bars','classic','split'].includes(value.musicTheme) ? value.musicTheme : value.musicPresentation==='off' ? 'off' : value.musicPresentation==='waveform' ? 'edge-bars' : value.musicPresentation==='disc' ? 'split' : base.musicTheme,
     musicSizing: ['fixed','expand'].includes(value.musicSizing) ? value.musicSizing : base.musicSizing,
     visibleTabs,
