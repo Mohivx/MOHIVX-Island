@@ -9,6 +9,7 @@ const nativeAssets = [
   'mohivx-phone.exe','MohivxCamera64.dll',
   'ask-island.cjs','island-mcp.cjs',
 ];
+const optionalNativeAssets = ['mohivx-window-style.exe'];
 
 function stageNativeAssets(sourceDir, destinationDir) {
   fs.mkdirSync(destinationDir, { recursive: true });
@@ -18,7 +19,12 @@ function stageNativeAssets(sourceDir, destinationDir) {
     if (!source) throw new Error(`Missing bundled Windows helper: ${name}`);
     fs.copyFileSync(source, path.join(destinationDir, name));
   }
-  return Object.fromEntries(nativeAssets.map(name => [name, path.join(destinationDir, name)]));
+  for (const name of optionalNativeAssets) {
+    const source = [path.join(sourceDir, name), path.join(sourceDir, '..', 'bin', name), path.join(sourceDir, '..', 'scripts', name)]
+      .find(candidate => fs.existsSync(candidate));
+    if (source) fs.copyFileSync(source, path.join(destinationDir, name));
+  }
+  return Object.fromEntries([...nativeAssets, ...optionalNativeAssets].filter(name => fs.existsSync(path.join(destinationDir, name))).map(name => [name, path.join(destinationDir, name)]));
 }
 
 module.exports = { stageNativeAssets };

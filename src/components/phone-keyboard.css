@@ -1,0 +1,2 @@
+.phone-viewer-canvas{position:relative}
+.phone-keyboard-capture{position:absolute;z-index:2;inset-inline-start:0;inset-block-start:0;width:1px;height:1px;min-width:1px;min-height:1px;max-width:1px;max-height:1px;padding:0;border:0;opacity:0;overflow:hidden;resize:none;pointer-events:none}

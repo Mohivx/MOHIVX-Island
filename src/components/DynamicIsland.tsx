@@ -140,6 +140,12 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
     } catch (e) {}
     return DEFAULT_MOHIVX_SETTINGS;
   });
+  const selectDefaultTab = () => {
+    const candidates = new Set<TabType>(['phone','agents','ai','controls','today','stats','clipboard','apps','wallpaper','power']);
+    const preferred = appSettings.defaultTab as TabType;
+    if (candidates.has(preferred) && appSettings.visibleTabs?.[preferred] !== false) return preferred;
+    return (appSettings.tabOrder.find(id => candidates.has(id as TabType) && appSettings.visibleTabs?.[id as TabType] !== false) as TabType) || 'controls';
+  };
 
   const actionCardPreference=useRef(appSettings.showActionCards);actionCardPreference.current=appSettings.showActionCards;
   const agentRequestPreference=useRef(appSettings.agentShowRequests);agentRequestPreference.current=appSettings.agentShowRequests;
@@ -387,6 +393,9 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
 
   const shellRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
+  const [clockNow,setClockNow]=useState(()=>new Date());
+  useEffect(()=>{if(!appSettings.clockWhileAsleep)return;const timer=window.setInterval(()=>setClockNow(new Date()),30000);return()=>window.clearInterval(timer);},[appSettings.clockWhileAsleep]);
+  const asleepClockLabel=new Intl.DateTimeFormat(appLang==='ar'?'ar-SA':'en-US',{hour:'2-digit',minute:'2-digit'}).format(clockNow);
   const drawerRef = useRef<HTMLDivElement>(null);
   const [drawerMeasurement, setDrawerMeasurement] = useState({key:'',height:0});
   const appSearchInputRef = useRef<HTMLInputElement>(null);
@@ -406,6 +415,11 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
     }
     // The surface animates first. A single sizing effect fits the native window afterwards.
     setIslandStage(targetStage);
+  };
+  const openDefaultDrawer = () => {
+    setTabDirection('fade');
+    setActiveTab(selectDefaultTab());
+    transitionToStage('drawer');
   };
   const transitionRef = useRef(transitionToStage); transitionRef.current = transitionToStage;
   if (!autoCollapse.current) autoCollapse.current = new AutoCollapse(() => transitionRef.current('collapsed'));
@@ -505,8 +519,8 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
   const glanceArtist=musicState.outputOnly?(appLang==='ar'?'صوت قيد التشغيل':'Sound is playing'):mediaInfo.artist;
   const glanceArtwork=musicState.outputOnly?undefined:mediaInfo.artwork;
   useEffect(()=>{
-    if(!mediaInfo.title && islandStage==='compact-media')transitionRef.current('collapsed');
-  },[mediaInfo.title,islandStage]);
+    if(!mediaGlance && islandStage==='compact-media')transitionRef.current('collapsed');
+  },[mediaGlance,islandStage]);
 
   const handleMouseEnter = () => autoCollapse.current?.enter();
   const handleMouseLeave = () => autoCollapse.current?.leave();
@@ -559,7 +573,8 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
         }, 60);
       };
       const handleToggleIsland = () => {
-        transitionToStage(islandStage === 'collapsed' ? 'drawer' : 'collapsed');
+        if (islandStage === 'collapsed') openDefaultDrawer();
+        else transitionToStage('collapsed');
       };
 
       electron.ipcRenderer.on('open-apps-tab', handleOpenApps);
@@ -569,7 +584,7 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
         electron.ipcRenderer.removeListener('toggle-island', handleToggleIsland);
       };
     }
-  }, [islandStage]);
+  }, [islandStage, appSettings.defaultTab, appSettings.tabOrder, appSettings.visibleTabs]);
 
   // Local window hotkey listener for Alt+A and Alt+Q
   useEffect(() => {
@@ -782,7 +797,7 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
     if (e.deltaY < -10) {
       // Wheel UP -> Collapse / Shrink window back
       if (islandStage === 'drawer') {
-        if (mediaInfo.title) {
+        if (mediaGlance) {
           transitionToStage('compact-media');
         } else {
           transitionToStage('collapsed');
@@ -793,7 +808,7 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
     } else if (e.deltaY > 10) {
       // Wheel DOWN -> Expand
       if (islandStage === 'collapsed') {
-        if (mediaInfo.title) {
+        if (mediaGlance) {
           transitionToStage('compact-media');
         } else {
           transitionToStage('drawer');
@@ -1473,6 +1488,8 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
             opacity: 1,
             '--mohivx-accent': accentColor,
             backgroundColor:isLightMode?'#f4f4f7':'#000000',
+            border:appSettings.islandStroke&&appSettings.islandStroke!=='off'?((appSettings.islandStroke==='thin'?1:appSettings.islandStroke==='medium'?2:3)+'px solid '+(appSettings.islandStrokeColor||accentColor)):undefined,
+            boxSizing:'border-box',
             '--island-duration': `${morphDuration}ms`
           } as React.CSSProperties}
         >
@@ -1497,20 +1514,18 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
               <div
                 onWheel={handleNotchWheel}
                 onClick={() => {
-                  setTabDirection('fade');
-                  transitionToStage('drawer');
+                  openDefaultDrawer();
                 }}
                 className="w-full h-full rounded-full flex items-center justify-center cursor-pointer bg-black/90 border border-white/20 shadow-lg group hover:scale-105 transition-transform"
                 title={appLang === 'ar' ? 'اضغط لفتح جزيرة MOHIVX' : 'Click to open MOHIVX Island'}
               >
-                <CompanionCharacter skin={activeSoulSkin} size={18} state={mediaGlance ? 'listening' : 'idle'} />
+                <CompanionCharacter skin={activeSoulSkin} size={18} state={mediaGlance ? 'listening' : 'idle'} />{appSettings.clockWhileAsleep&&<small style={{fontSize:7,lineHeight:1}}>{asleepClockLabel}</small>}
               </div>
             ) : currentShape === 'dynamic-island' ? (
               <div
                 onWheel={handleNotchWheel}
                 onClick={() => {
-                  setTabDirection('fade');
-                  transitionToStage('drawer');
+                  openDefaultDrawer();
                 }}
                 className="island-mini-capsule w-full h-full rounded-full flex items-center justify-between px-2 cursor-pointer bg-black/90 border border-white/20 hover:border-[color:var(--app-accent)]/50 transition-colors"
                 title={appLang === 'ar' ? 'اضغط لفتح جزيرة MOHIVX' : 'Click to open MOHIVX Island'}
@@ -1519,19 +1534,18 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
                   <CompanionCharacter skin={activeSoulSkin} size={20} state="idle" />
                   
                 </div>
-                <div className="w-2 h-2 rounded-full" style={{background:agentGlance.status==='waiting'?'#f5a524':agentGlance.status==='working'?accentColor:agentGlance.status==='completed'?accentColor:'#6b7079'}} />
+                <div className="w-2 h-2 rounded-full" style={{background:agentGlance.status==='waiting'?'#f5a524':agentGlance.status==='working'?accentColor:agentGlance.status==='completed'?accentColor:'#6b7079'}} />{appSettings.clockWhileAsleep&&<small style={{fontSize:8,whiteSpace:'nowrap'}}>{asleepClockLabel}</small>}
               </div>
             ) : (
               <div
                 id="hitodama-collapsed-notch"
                 onWheel={handleNotchWheel}
                 onClick={() => {
-                  setTabDirection('fade');
-                  transitionToStage('drawer');
+                  openDefaultDrawer();
                 }}
                 className="island-mini-notch w-full h-full cursor-pointer flex items-center justify-center"
                 title={appLang === 'ar' ? 'اضغط لفتح جزيرة MOHIVX' : 'Click to open MOHIVX Island'}
-              ><span aria-hidden className="w-10 h-[3px] rounded-full" style={{background:agentGlance.status==='waiting'?'#f5a524':accentColor,boxShadow:`0 0 10px ${accentColor}66`}}/></div>
+              >{appSettings.clockWhileAsleep&&<small style={{position:'absolute',left:'50%',top:'50%',transform:'translate(-50%,-50%)',fontSize:10,fontVariantNumeric:'tabular-nums'}}>{asleepClockLabel}</small>}<span aria-hidden className="w-10 h-[3px] rounded-full" style={{background:agentGlance.status==='waiting'?'#f5a524':accentColor,boxShadow:`0 0 10px ${accentColor}66`}}/></div>
             )
           )}
 
@@ -2134,7 +2148,7 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
                   </div>
 
                   {/* Row 4: REAL Windows Media Player Card (Visible when media title exists, even if paused) */}
-                  {Boolean(mediaInfo.title) && (
+                  {Boolean(mediaInfo.title || outputAudio) && (
                     <div className={`${
                       isLightMode ? 'bg-white border-zinc-200 text-zinc-900' : 'bg-[var(--panel-card)] text-white border-white/5'
                     } border rounded-2xl p-3 flex flex-col gap-2 shadow-sm animate-island-content`}>
@@ -2144,7 +2158,9 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
                           <span className="truncate max-w-[280px]">{selectedAudioDevice}</span>
                         </div>
                         <span className={`font-mono text-[10px] ${mediaInfo.isPlaying ? 'text-emerald-400 font-bold' : 'text-zinc-400'}`}>
-                          {mediaInfo.isPlaying ? (appLang === 'ar' ? 'يعمل الآن' : 'Playing') : (appLang === 'ar' ? 'متوقف مؤقتاً' : 'Paused')}
+                          {mediaInfo.title
+                            ? mediaInfo.isPlaying ? (appLang === 'ar' ? 'يعمل الآن' : 'Playing') : (appLang === 'ar' ? 'متوقف مؤقتاً' : 'Paused')
+                            : (appLang === 'ar' ? 'صوت الجهاز يعمل' : 'Device audio is active')}
                         </span>
                       </div>
 
@@ -2152,11 +2168,11 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
                         <div className="flex items-center gap-3 overflow-hidden pr-2">
                           <MusicCover artwork={mediaInfo.artwork} large/>
                           <div className="flex flex-col overflow-hidden" dir="auto">
-                            <span className="font-bold text-sm truncate max-w-[340px]" title={mediaInfo.title} dir="auto">
-                              {mediaInfo.title}
+                            <span className="font-bold text-sm truncate max-w-[340px]" title={mediaInfo.title || (appLang === 'ar' ? 'صوت قيد التشغيل' : 'Audio playing')} dir="auto">
+                              {mediaInfo.title || (appLang === 'ar' ? 'صوت قيد التشغيل' : 'Audio playing')}
                             </span>
                             <span className="text-xs text-zinc-400 truncate max-w-[300px]" dir="auto">
-                              {mediaInfo.artist}
+                              {mediaInfo.artist || (appLang === 'ar' ? 'من أي تطبيق على ويندوز' : 'From any Windows app')}
                             </span>
                           </div>
                         </div>
@@ -2195,7 +2211,7 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
                       </div>
 
                       {/* Interactive Media Timeline Track */}
-                      <div className="flex flex-col gap-1 pt-1.5 select-none" onClick={(e) => e.stopPropagation()}>
+                      {Boolean(mediaInfo.title) && <div className="flex flex-col gap-1 pt-1.5 select-none" onClick={(e) => e.stopPropagation()}>
                         <div
                           onClick={(e) => {
                             if (!mediaInfo.duration) return;
@@ -2227,7 +2243,7 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
                               : (mediaInfo.isPlaying ? (appLang === 'ar' ? 'مباشر' : 'LIVE') : '--:--')}
                           </span>
                         </div>
-                      </div>
+                      </div>}
                     </div>
                   )}
                 </div>
@@ -3137,6 +3153,10 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
                     onKeyDown={(e) => {
                       // Arrow navigation applies immediately; the window listener also
                       // handles keys while a header or navigation button has focus.
+                      // Leave modified arrows to the global island navigator. In
+                      // particular, Ctrl+Left/Right changes sections; only an
+                      // unmodified arrow browses wallpapers.
+                      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.nativeEvent.isComposing) return;
                       if ((e.target as HTMLElement).tagName==='INPUT')return;
                       if (e.key === 'ArrowLeft') {
                         e.preventDefault();

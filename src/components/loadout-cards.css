@@ -20,6 +20,48 @@
   position: relative;
 }
 
+.loadout-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.loadout-embers {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  padding: 5px 10px;
+  color: #e8c992;
+  background: rgba(183, 131, 58, 0.17);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.soul-picker {
+  min-height: 365px;
+  margin-top: 12px;
+  border-top: 0;
+  padding-top: 0;
+}
+
+.soul-picker .loadout-carousel-container {
+  min-height: 350px;
+}
+
+.loadout-ability-glyph {
+  display: flex;
+  width: 94px;
+  height: 94px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(139, 188, 255, 0.22), rgba(139, 188, 255, 0.02) 70%);
+  font-size: 64px;
+  line-height: 1;
+  text-shadow: 0 0 26px currentColor;
+}
+
 /* Soul picker context fit */
 .soul-picker .loadout-carousel-container {
   padding: 8px 0 12px;
@@ -305,3 +347,7 @@
     font-size: 15px;
   }
 }
+
+/* Fifth orbit card completes the six-node loadout from the reference. */
+.soul-orbit .slot-4{left:50%;right:auto;top:auto;bottom:1%;transform:translateX(-50%)}
+@media(max-width:700px){.soul-orbit .slot-4{left:50%;right:auto;bottom:0;transform:translateX(-50%)}}

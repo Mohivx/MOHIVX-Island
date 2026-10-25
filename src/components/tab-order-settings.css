@@ -1,0 +1,3 @@
+.tab-order-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.tab-order-heading h3{margin:0}
+.tab-order-strip{display:flex;align-items:stretch;gap:8px;overflow-x:auto;overscroll-behavior-inline:contain;padding:8px 2px;scrollbar-width:thin}
+.tab-order-strip li{flex:0 0 auto}.tab-order-strip li[data-hidden=true] button{border-color:#a5425838;background:#451c2b55;color:#df899a}.tab-order-strip li[data-hidden=true] small{font-size:9px;color:#ee899c}

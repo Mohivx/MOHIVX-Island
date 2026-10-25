@@ -26,13 +26,16 @@ test('phone input validates geometry and needs both PC capabilities and a curren
  const revoked=sync.request(d,{type:'input',input:{type:'tap',x:.5,y:.5}});sync.exchange(d,{status:{capture:[],controlEnabled:false}});await assert.rejects(revoked,/revoked/);
  await assert.rejects(sync.request(d,{type:'input',input:{type:'tap',x:.5,y:.5}}),/Enable phone control/);
  for(const value of [{type:'tap',x:-1,y:.5},{type:'tap',x:Infinity,y:0},{type:'swipe',x:0,y:0,endX:2,endY:1},{type:'key',key:'unlock'},{type:'text',text:'x'.repeat(2001)}])assert.throws(()=>phoneInput(value),/phone input/);
+ assert.deepEqual(phoneInput({type:'text',text:'مرحبا 👋'}),{type:'text',text:'مرحبا 👋'});
+ for(const key of ['escape','backspace','delete','selectAll','copy','cut','paste'])assert.deepEqual(phoneInput({type:'key',key}),{type:'key',key});
  d.capabilities=['phoneControl'];sync.exchange(d,body);await assert.rejects(sync.request(d,{type:'input',input:{type:'key',key:'home'}}),/Enable phone control/);sync.clear();
 });
 test('phone metadata is bounded and rejects remote-image URLs or malformed backgrounds',()=>{
  const sync=new PhoneSync(),d={id:'a',name:'Phone',capabilities:['phoneData']};
- sync.exchange(d,{status:{battery:150,charging:true,wallpaper:'https://example.com/tracker.jpg',connection:'script',name:'A'.repeat(300)}});
- const state=sync.snapshot(d.id).status;assert.equal(state.battery,null);assert.equal(state.wallpaper,'');assert.equal(state.name.length,100);assert.equal(state.connection,'other');
+ sync.exchange(d,{status:{battery:150,charging:true,wallpaper:'https://example.com/tracker.jpg',connection:'script',name:'A'.repeat(300),display:{width:1080,height:2340,densityDpi:420,rotation:1}}});
+ const state=sync.snapshot(d.id).status;assert.equal(state.battery,null);assert.equal(state.wallpaper,'');assert.equal(state.name.length,100);assert.equal(state.connection,'other');assert.deepEqual(state.display,{width:1080,height:2340,densityDpi:420,rotation:1});
  sync.exchange(d,{status:{battery:40,connection:'usb'}});assert.equal(sync.snapshot(d.id).status.battery,40);sync.clear();
+ sync.exchange(d,{status:{display:{width:100000,height:-1,densityDpi:-1,rotation:8}}});assert.equal(sync.snapshot(d.id).status.display,null);sync.clear();
 });
 test('screen clicks ignore letterboxing and map cover cropping to true phone coordinates',async()=>{
  const {phonePoint}=await import('../src/components/phonePointer.mjs');const rect={left:0,top:0,width:1000,height:1000};

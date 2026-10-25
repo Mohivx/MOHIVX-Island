@@ -250,7 +250,7 @@ function updateTrayMenu() {
         isIslandExplicitlyHidden = false;
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.show();
-          mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+          mainWindow.setAlwaysOnTop(currentAppSettings.reserveSpace!==false, 'screen-saver', 1);
           mainWindow.focus();
         }
         updateTrayMenu();
@@ -288,7 +288,7 @@ function toggleIslandVisibility() {
   } else {
     isIslandExplicitlyHidden = false;
     mainWindow.show();
-    mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+    mainWindow.setAlwaysOnTop(currentAppSettings.reserveSpace!==false, 'screen-saver', 1);
     mainWindow.focus();
   }
   updateTrayMenu();
@@ -560,6 +560,16 @@ function createWindow() {
   mainWindow.webContents.setWindowOpenHandler(()=>({action:'deny'}));
   mainWindow.webContents.on('will-navigate',event=>event.preventDefault());
   mainWindow.setTitle('MOHIVX Island — Island');
+  const applyIslandWindowStyle = () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    const helper = path.join(binDir, 'mohivx-window-style.exe');
+    if (!fs.existsSync(helper)) return;
+    const handle = mainWindow.getNativeWindowHandle().readBigUInt64LE(0).toString();
+    execFile(helper, [handle], { windowsHide: true, timeout: 5000 }, error => {
+      if (error) log('Could not hide island from Alt+Tab: ' + error.message);
+    });
+  };
+  mainWindow.webContents.once('did-finish-load', applyIslandWindowStyle);
   mainWindow.on('page-title-updated', event => event.preventDefault());
   const iconPath = getAppIconPath();
   if (iconPath) {
@@ -567,7 +577,7 @@ function createWindow() {
   }
 
   log(`mainWindow created, handle: ${mainWindow.getNativeWindowHandle().readInt32LE(0)}`);
-  mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+  mainWindow.setAlwaysOnTop(currentAppSettings.reserveSpace!==false, 'screen-saver', 1);
 
   // Show Desktop Immunity (Immune to Win+D, Win+M, and 3-finger Trackpad Show-Desktop Gestures)
   mainWindow.on('minimize', (e) => {
@@ -577,7 +587,7 @@ function createWindow() {
         mainWindow.restore();
         if (!isIslandExplicitlyHidden) {
           mainWindow.show();
-          mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+          mainWindow.setAlwaysOnTop(currentAppSettings.reserveSpace!==false, 'screen-saver', 1);
         }
       }
     }, 10);
@@ -593,7 +603,7 @@ function createWindow() {
     setTimeout(() => {
       if (mainWindow && !mainWindow.isDestroyed() && !isIslandExplicitlyHidden) {
         mainWindow.show();
-        mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+        mainWindow.setAlwaysOnTop(currentAppSettings.reserveSpace!==false, 'screen-saver', 1);
       }
     }, 10);
   });
@@ -605,11 +615,11 @@ function createWindow() {
         mainWindow.restore();
         if (!isIslandExplicitlyHidden) {
           mainWindow.show();
-          mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+          mainWindow.setAlwaysOnTop(currentAppSettings.reserveSpace!==false, 'screen-saver', 1);
         }
       } else if (!mainWindow.isVisible() && !isIslandExplicitlyHidden) {
         mainWindow.show();
-        mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+        mainWindow.setAlwaysOnTop(currentAppSettings.reserveSpace!==false, 'screen-saver', 1);
       }
     }
   }, 200);
@@ -743,9 +753,13 @@ function createWindow() {
   ipcMain.handle('get-current-media', () => queryMedia());
 
   // Send one native media request. A second fallback would toggle playback twice.
+  const { mediaKeyFallbackCommand } = require('./services/mediaKeyFallback.cjs');
   ipcMain.on('media-control', (_event, action) => {
     if (!['play-pause', 'next', 'prev'].includes(action)) return;
-    execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', getMediaScriptPath, '-Action', action], { windowsHide: true, timeout: 15000 }, error => {
+    execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', getMediaScriptPath, '-Action', action], { windowsHide: true, timeout: 15000 }, (error, stdout) => {
+      if (error || String(stdout).trim() === 'NO_MEDIA') {
+        execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', mediaKeyFallbackCommand(action)], { windowsHide: true, timeout: 8000 }, () => {});
+      }
       if (error) log(`Media control failed: ${error.message}`);
     });
   });
@@ -1264,10 +1278,20 @@ function createWindow() {
   // Real App launcher with path support & smart fallbacks
   ipcMain.on('launch-app',async(_event,input)=>{
     try{const file=typeof input==='object'?input.path:null;
-      if(input?.appId){await appInventory.list();const item=appInventory.resolveAppId(input.appId);if(!item)throw new Error('Unknown installed application.');await new Promise((resolve,reject)=>execFile('explorer.exe',['shell:AppsFolder\\'+item.appId],{windowsHide:true},error=>error?reject(error):resolve()));}
+      if(input?.appId){
+        await appInventory.list();
+        const item=appInventory.resolveAppId(input.appId);
+        if(!item)throw new Error('Unknown installed application.');
+        if(item.path&&path.isAbsolute(item.path)&&/\.lnk$/i.test(item.path)&&fs.existsSync(item.path)){
+          const error=await shell.openPath(item.path);
+          if(error)throw new Error(error);
+        }else{
+          await new Promise((resolve,reject)=>execFile('explorer.exe',['shell:AppsFolder\\'+item.appId],{windowsHide:true,timeout:8000},error=>error?reject(error):resolve()));
+        }
+      }
       else if(file&&path.isAbsolute(file)&&fs.existsSync(file)){const error=await shell.openPath(file);if(error)throw new Error(error);}
       else await launchSafeApp(typeof input==='string'?input:input?.name);
-    }catch{mainWindow?.webContents.send('app-launch-failed',currentAppSettings.appLang==='ar'?'تعذر فتح التطبيق. تحقق من مساره.':'Could not open application. Check its path.');}
+    }catch(error){log('App launch failed: '+(error?.message||error));mainWindow?.webContents.send('app-launch-failed',currentAppSettings.appLang==='ar'?'تعذر فتح التطبيق. تحقق من مساره.':'Could not open application. Check its path.');}
   });
 
   // Real Installed Windows Applications Scanner with In-Memory Icon Cache
@@ -1660,13 +1684,14 @@ const legacyConfigFilePath = path.join(os.homedir(), '.hitodama-ai', 'config.jso
 const legacySettingsFilePath = path.join(os.homedir(), '.hitodama-ai', 'settings.json');
 
 const defaultAppSettings = {
-  agentBridgeEnabled:true,agentShowRequests:true,agentNotifyOnComplete:true,agentNotifyOnError:true,agentSyncToAndroid:true,wallpaperTransition:true,phoneCameraDevice:'',phoneMicDevice:'',phoneMicSink:'',phoneMicAuto:true,phoneSelectedDevice:'',
+  agentBridgeEnabled:true,agentShowRequests:true,agentNotifyOnComplete:true,agentNotifyOnError:true,agentSyncToAndroid:true,wallpaperTransition:true,phoneCameraDevice:'',phoneMicDevice:'',phoneMicSink:'',phoneMicAuto:true,phoneSelectedDevice:'',phoneDeviceLayout:{},
   appLang: 'en',userName:'',weatherCity:'',historySide:'left',advancedMode:false,uiSounds:true,uiSoundVolume:.12,abilitySoundVolume:.16,liveVoiceModel:'gemini-3.8-live',replySpeed:'patient',
   baselineVersion: 1,
   aiEnabled: true, aiProvider: 'gemini-cloud', voiceInputEnabled: true,
-  theme: 'original-blue', customAccentColor: '', islandShape: 'classic', islandScale: 1,islandGlowStrength:1,islandGlowSpread:1,
+  theme: 'original-blue', customAccentColor: '', islandShape: 'classic', islandScale: 1,islandGlowStrength:1,islandGlowSpread:1,islandStroke:'off',islandStrokeColor:'#8bbcff',clockWhileAsleep:false,reserveSpace:true,
   visibleTabs: { agents:true, phone:true, ai: true, controls: true, today: true, stats: true, clipboard: true, apps: true, wallpaper: true, power: true },
   tabOrder: ['agents','phone','controls', 'today', 'stats', 'clipboard', 'apps', 'wallpaper', 'power', 'ai'],
+  defaultTab: 'controls',
   islandNotificationsEnabled:true,windowsNotificationsEnabled:true,mohivxToastsEnabled:false,
   ...notificationPreferences(),
   musicVisualizerStyle:'bars',musicPresentation:'compact',
@@ -1780,7 +1805,7 @@ function saveAppSettings(newSettings) {
     }
     if(next.phoneCameraDevice!==currentAppSettings.phoneCameraDevice)void phoneNative.request('camera-stop').catch(()=>{});
     if(next.phoneMicAuto===false&&currentAppSettings.phoneMicAuto!==false)void micRouter.stop();
-    currentAppSettings = next;if(!next.advancedMode)autoClicker.stop();if(next.localOnlyMode||next.voiceInputEnabled===false||next.aiEnabled===false)liveVoice.stop();chatHistoryWindow.send('app-settings-updated',currentAppSettings);
+    currentAppSettings = next;if(Object.prototype.hasOwnProperty.call(newSettings,'reserveSpace')&&mainWindow&&!mainWindow.isDestroyed())mainWindow.setAlwaysOnTop(Boolean(next.reserveSpace),'screen-saver',1);if(!next.advancedMode)autoClicker.stop();if(next.localOnlyMode||next.voiceInputEnabled===false||next.aiEnabled===false)liveVoice.stop();chatHistoryWindow.send('app-settings-updated',currentAppSettings);
     if(mainWindow&&!mainWindow.isDestroyed()){ipcMain.emit('set-window-mode',null,lastWindowRequest);void refreshFullscreenWatcher();}
     log('Saved companion preferences');
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1804,7 +1829,7 @@ function refreshFullscreenWatcher(){
   let pending='';child.stdout.on('data',chunk=>{pending+=chunk.toString();const lines=pending.split(/\r?\n/);pending=lines.pop();for(const line of lines){try{const full=JSON.parse(line).fullscreen;if(full&&!isIslandExplicitlyHidden){hiddenForFullscreen=true;isIslandExplicitlyHidden=true;mainWindow?.hide();}else if(!full&&hiddenForFullscreen){hiddenForFullscreen=false;isIslandExplicitlyHidden=false;mainWindow?.show();}}catch{}}});
   child.stderr.on('data',()=>{});child.on('error',()=>{fullscreenWatcher=null;});child.on('exit',()=>{fullscreenWatcher=null;});
 }
-ipcMain.handle('get-displays',()=>screen.getAllDisplays().map((d,i)=>({id:String(d.id),name:d.label||`Display ${i+1}`,primary:d.id===screen.getPrimaryDisplay().id})));
+ipcMain.handle('get-displays',()=>screen.getAllDisplays().map((d,i)=>({id:String(d.id),name:d.label||`Display ${i+1}`,primary:d.id===screen.getPrimaryDisplay().id,bounds:{x:d.bounds.x,y:d.bounds.y,width:d.bounds.width,height:d.bounds.height},workArea:{x:d.workArea.x,y:d.workArea.y,width:d.workArea.width,height:d.workArea.height},scaleFactor:d.scaleFactor})));
 let lastSlideshowAt=Date.now(),slideshowIndex=0;
 setInterval(async()=>{if(!app.isReady()||!currentAppSettings.wallpaperSlideshow||qaMode)return;const minutes=Math.max(1,Math.min(1440,Number(currentAppSettings.wallpaperIntervalMinutes)||30));if(Date.now()-lastSlideshowAt<minutes*60000)return;lastSlideshowAt=Date.now();const list=await getCompanionWallpapers();if(list.length)void applyWallpaperToWindows(list[slideshowIndex++%list.length].filePath).catch(e=>log('Slideshow: '+e.message));},10000);
 async function runNative(script,args=[]) {

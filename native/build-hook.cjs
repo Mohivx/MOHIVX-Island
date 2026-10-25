@@ -12,6 +12,8 @@ if(process.platform==='win32'){
   if(compile.status!==0)process.exit(compile.status||1);
   const meter=spawnSync(csc,['/nologo','/target:exe','/platform:x64','/optimize+','/out:'+path.join(root,'bin','mohivx-audio-meter.exe'),path.join(__dirname,'AudioMeterHost.cs')],{stdio:'inherit',windowsHide:true});
   if(meter.status!==0)process.exit(meter.status||1);
+  const windowStyle=spawnSync(csc,['/nologo','/target:exe','/platform:x64','/optimize+','/out:'+path.join(root,'bin','mohivx-window-style.exe'),path.join(__dirname,'WindowStyleHost.cs')],{stdio:'inherit',windowsHide:true});
+  if(windowStyle.status!==0)process.exit(windowStyle.status||1);
   const phone=spawnSync(csc,['/nologo','/target:exe','/platform:x64','/optimize+','/out:'+path.join(root,'bin','mohivx-phone.exe'),'/r:System.Drawing.dll','/r:System.Web.Extensions.dll',path.join(__dirname,'PhoneHost.cs'),path.join(__dirname,'PhoneAudio.cs'),path.join(__dirname,'MicEndpoints.cs'),path.join(__dirname,'MicDiagnostics.cs')],{stdio:'inherit',windowsHide:true});
   if(phone.status!==0)process.exit(phone.status||1);
   const mic=spawnSync(process.execPath,[path.join(__dirname,'build-mic.cjs')],{stdio:'inherit',windowsHide:true});

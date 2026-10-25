@@ -1,4 +1,5 @@
 import {useLayoutEffect,useRef,useState,type ElementType} from 'react';
+import './glass-dock-direction.css';
 type Item={id:string;label:string;icon:ElementType};
 export function GlassDock({items,active,onSelect,ar}:{items:Item[];active:string;onSelect:(id:string)=>void;ar:boolean}){
  const root=useRef<HTMLElement>(null),[frame,setFrame]=useState({x:0,y:0,width:0,height:0});

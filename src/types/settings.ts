@@ -71,6 +71,10 @@ export interface MohivxSettings {
   islandScale: number; // 0.8 to 1.3
   islandGlowStrength:number;
   islandGlowSpread:number;
+  islandStroke:'off'|'thin'|'medium'|'thick';
+  islandStrokeColor:string;
+  clockWhileAsleep:boolean;
+  reserveSpace:boolean;
   islandOpacity: number; // 0.6 to 1.0
   blurStrength: number; // 0 to 40
   borderGlow: boolean;
@@ -90,6 +94,7 @@ export interface MohivxSettings {
     power: boolean;
   };
   tabOrder: string[];
+  defaultTab: string;
   islandNotificationsEnabled:boolean;
   windowsNotificationsEnabled:boolean;
   mohivxToastsEnabled:boolean;
@@ -166,6 +171,7 @@ export interface MohivxSettings {
   phoneMicDevice:string;
   phoneMicAuto:boolean;
   phoneSelectedDevice:string;
+  phoneDeviceLayout:Record<string,{x:number;y:number}>;
   phoneMicSink:string;
   agentNotifyOnError: boolean;
   agentSyncToAndroid: boolean;
@@ -213,6 +219,10 @@ export const DEFAULT_MOHIVX_SETTINGS: MohivxSettings = {
   islandScale: 1.0,
   islandGlowStrength:1,
   islandGlowSpread:1,
+  islandStroke:'off',
+  islandStrokeColor:'#8bbcff',
+  clockWhileAsleep:false,
+  reserveSpace:true,
   islandOpacity: 0.95,
   blurStrength: 24,
   borderGlow: true,
@@ -231,6 +241,7 @@ export const DEFAULT_MOHIVX_SETTINGS: MohivxSettings = {
     power: true,
   },
   tabOrder: ['agents','phone', 'controls', 'today', 'stats', 'clipboard', 'apps', 'wallpaper', 'power', 'ai'],
+  defaultTab: 'controls',
   islandNotificationsEnabled:true,windowsNotificationsEnabled:true,mohivxToastsEnabled:false,
   notificationStyle:'detailed',notificationMotion:'smooth',notificationDurationSeconds:8,notificationWidth:420,
 
@@ -290,7 +301,7 @@ export const DEFAULT_MOHIVX_SETTINGS: MohivxSettings = {
   agentBridgeEnabled:true,
   agentShowRequests:true,
   wallpaperTransition:true,
-  phoneCameraDevice:'',phoneMicDevice:'',phoneMicAuto:true,phoneSelectedDevice:'',
+  phoneCameraDevice:'',phoneMicDevice:'',phoneMicAuto:true,phoneSelectedDevice:'',phoneDeviceLayout:{},
   phoneMicSink:'',
   agentNotifyOnError: true,
   agentSyncToAndroid: true,

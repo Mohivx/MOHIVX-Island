@@ -3,6 +3,15 @@ const {execFile}=require('node:child_process');
 const {agentName,agentColor,validateAgent,APPROVAL_AGENTS}=require('../vendor/coucou/agents.cjs');
 const {buildFileDiff,toOneLine}=require('../vendor/coucou/diff.cjs');
 const text=(value,max=2000)=>typeof value==='string'?value.slice(0,max):'';
+function addChatMessage(session,role,value,at){
+  const content=text(value,6000).trim();if(!content)return;
+  if(!Array.isArray(session.chat))session.chat=[];
+  session.chat.push({id:crypto.randomUUID(),role,content,at});
+  if(session.chat.length>40)session.chat.splice(0,session.chat.length-40);
+}
+function questionText(questions){
+  return questions.map(item=>[text(item?.question,1000),...(Array.isArray(item?.options)?item.options.slice(0,8).map(option=>'• '+text(option?.label,200)):[])].filter(Boolean).join('\n')).join('\n\n');
+}
 const equal=(a,b)=>/^[a-f0-9]{64}$/.test(a||'')&&/^[a-f0-9]{64}$/.test(b||'')&&crypto.timingSafeEqual(Buffer.from(a),Buffer.from(b));
 const digest=value=>crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 class AgentHooks {
@@ -45,7 +54,7 @@ class AgentHooks {
     const externalId=text(payload.session_id,160);if(!externalId)return false;
     const id=agent+':'+externalId;
     if(!this.sessions.has(id)&&this.sessions.size>=32){const oldest=[...this.sessions.values()].filter(s=>![...this.pending.values()].some(p=>p.sessionId===s.id)).sort((a,b)=>a.updatedAt-b.updatedAt)[0];if(!oldest)return false;this.sessions.delete(oldest.id);}
-    const session=this.sessions.get(id)||{id,agent,name:agent==='claude'?'Claude Code':agentName(agent),color:agent==='claude'?'#D97757':agentColor(agent),project:text(payload.cwd,1000).split(/[\\/]/).filter(Boolean).at(-1)||'',status:'idle',steps:[],diffs:[],updatedAt:this.now()};
+    const session=this.sessions.get(id)||{id,agent,name:agent==='claude'?'Claude Code':agentName(agent),color:agent==='claude'?'#D97757':agentColor(agent),project:text(payload.cwd,1000).split(/[\\/]/).filter(Boolean).at(-1)||'',status:'idle',steps:[],diffs:[],chat:[],updatedAt:this.now()};
     if(agent==='codex'&&payload.mohivx_source==='desktop-question-bridge'){const origin=['codex','gemini','antigravity','claude'].includes(payload.mohivx_question_agent)?payload.mohivx_question_agent:'codex';session.name=(origin==='claude'?'Claude Code':agentName(origin))+' · App';session.color=agentColor(origin);session.source='explicit-question-bridge';}
     this.sessions.set(id,session);session.updatedAt=this.now();
     const tool=text(payload.tool_name,100),input=payload.tool_input&&typeof payload.tool_input==='object'&&!Array.isArray(payload.tool_input)?payload.tool_input:{};
@@ -56,6 +65,8 @@ class AgentHooks {
     if(['StopFailure','PostToolUseFailure'].includes(event))session.status='error';
     if(['SessionEnd','Interrupt'].includes(event))session.status='idle';
     if(event==='StatusLine'&&payload.rate_limits)session.usage=payload.rate_limits;
+    if(event==='UserPromptSubmit')addChatMessage(session,'user',payload.prompt||payload.message,this.now());
+    if(event==='Stop')addChatMessage(session,'assistant',payload.last_assistant_message||payload.message,this.now());
     const detail=event==='Stop'?toOneLine(text(payload.last_assistant_message||payload.message,2000)):text(input.command||input.file_path||input.path||payload.message||tool||event,2000);
     session.lastStep=detail;session.steps.unshift({event,tool,detail,at:this.now()});session.steps.length=Math.min(30,session.steps.length);
     if(event==='PostToolUse'){
@@ -67,6 +78,7 @@ class AgentHooks {
       if(this.pending.size>=16)return false;
       const requestId='hook:'+crypto.randomUUID(),fingerprint=digest({session:id,tool,input});
       const questions=tool==='AskUserQuestion'&&Array.isArray(input.questions)?input.questions.slice(0,4):null;
+      if(questions?.length)addChatMessage(session,'assistant',questionText(questions),this.now());
       const expires=this.now()+(this.options.expiryMs||125000);
       const p={id:requestId,fingerprint,sessionId:id,agent,bridgeSource:session.source==='explicit-question-bridge'?'desktop-question-bridge':undefined,title:tool||'Permission request',detail:JSON.stringify(input,null,2),questions,expires,socket};
       p.timer=setTimeout(()=>{if(this.pending.has(requestId)){this.removePending(requestId,'expired');socket.end();}},Math.max(1,expires-this.now()));
@@ -85,6 +97,8 @@ class AgentHooks {
       if(!p.questions||!answers||typeof answers!=='object'||Array.isArray(answers))return {success:false,error:'Invalid answers.'};
       const keys=p.questions.map(q=>q.question);
       if(Object.keys(answers).length!==keys.length||keys.some(k=>typeof answers[k]!=='string'||!answers[k].trim()||answers[k].length>2000))return {success:false,error:'Answer each question.'};
+      const session=this.sessions.get(p.sessionId);
+      if(session)for(const question of p.questions)addChatMessage(session,'user',`${question.question}\n${answers[question.question]}`,this.now());
       reply=JSON.stringify({answers});
     }else if(decision==='deny'||decision==='allow'&&!p.questions)reply=decision;
     else return {success:false,error:'Unsupported decision.'};
