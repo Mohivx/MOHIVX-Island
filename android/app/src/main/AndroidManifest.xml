@@ -19,7 +19,13 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
-    <queries><intent><action android:name="android.service.wallpaper.WallpaperService" /></intent></queries>
+    <queries>
+        <intent><action android:name="android.service.wallpaper.WallpaperService" /></intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"

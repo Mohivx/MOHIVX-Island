@@ -1,0 +1,4 @@
+<resources>
+    <string name="phone_app_open_title">فتح تطبيق على الهاتف</string>
+    <string name="phone_app_open_text">اضغط لفتح %1$s</string>
+</resources>

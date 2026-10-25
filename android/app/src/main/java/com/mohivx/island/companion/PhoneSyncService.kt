@@ -11,6 +11,7 @@ class PhoneSyncService:Service(){
  private val worker=java.util.concurrent.Executors.newSingleThreadScheduledExecutor()
  private lateinit var client:CompanionClient
  private lateinit var files:PhoneFiles
+ private lateinit var apps:PhoneApps
  private val results=linkedMapOf<String,JSONObject>()
  private val agentIds=mutableSetOf<Int>()
  private var lastProfileAt=0L
@@ -18,7 +19,7 @@ class PhoneSyncService:Service(){
  private var lastNotificationAt=0L
  private fun pending(intent:Intent,id:Int)=PendingIntent.getActivity(this,id,intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
  private fun manager()=getSystemService(NOTIFICATION_SERVICE) as NotificationManager
- override fun onCreate(){super.onCreate();client=CompanionClient(this);files=PhoneFiles(this);val m=manager();if(android.os.Build.VERSION.SDK_INT>=26){m.createNotificationChannel(NotificationChannel("phone-sync","Phone connection",NotificationManager.IMPORTANCE_LOW));m.createNotificationChannel(NotificationChannel("phone-requests","Agent and sharing requests",NotificationManager.IMPORTANCE_DEFAULT))}}
+ override fun onCreate(){super.onCreate();client=CompanionClient(this);files=PhoneFiles(this);apps=PhoneApps(this);val m=manager();if(android.os.Build.VERSION.SDK_INT>=26){m.createNotificationChannel(NotificationChannel("phone-sync","Phone connection",NotificationManager.IMPORTANCE_LOW));m.createNotificationChannel(NotificationChannel("phone-requests","Agent and sharing requests",NotificationManager.IMPORTANCE_DEFAULT))}}
  private fun builder(channel:String)=if(android.os.Build.VERSION.SDK_INT>=26)Notification.Builder(this,channel)else Notification.Builder(this)
  override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int {
   if(intent?.action==STOP){getSharedPreferences("ui",MODE_PRIVATE).edit().putBoolean("phoneSync",false).apply();PhoneNotifications.clear();stopSelf();return START_NOT_STICKY}
@@ -39,7 +40,7 @@ class PhoneSyncService:Service(){
   notifyAgents(response.optJSONArray("requests")?:JSONArray());return (response.optJSONArray("commands")?.length()?:0)>0
  }catch(e:Exception){lastError=e.message?:"Connection unavailable";return false}}
  private fun execute(c:JSONObject):JSONObject {
-  val type=c.getString("type");if(type.startsWith("files.")||type=="photos.list")return files.execute(c)
+  val type=c.getString("type");if(type=="apps.list")return apps.list();if(type=="apps.launch")return apps.launch(c.getString("packageName"));if(type.startsWith("files.")||type=="photos.list")return files.execute(c)
   if(type=="input")return PhoneControlService.execute(c.getJSONObject("input"))
   val kind=c.optString("kind");require(kind in listOf("camera","mic","screen"))
   if(type=="capture.stop"){if(PhoneCaptureService.active.contains(kind))startService(Intent(this,PhoneCaptureService::class.java).setAction(PhoneCaptureService.STOP).putExtra("kind",kind));manager().cancel(3200+kind.hashCode());return JSONObject().put("stopped",true)}
