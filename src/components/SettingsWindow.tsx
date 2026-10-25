@@ -55,6 +55,26 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
   return <button type="button" role="switch" aria-label={label} aria-checked={checked} className="setting-toggle" data-on={checked} onClick={() => onChange(!checked)}><span /></button>;
 }
 
+function AppUpdateRows({ar,autoCheck,onAutoCheck}:{ar:boolean;autoCheck:boolean;onAutoCheck:(value:boolean)=>void}){
+  const [status,setStatus]=useState<any>({state:'idle',supported:false,percent:0});
+  const t=(en:string,a:string)=>ar?a:en;
+  useEffect(()=>{
+    if(!ipc)return;
+    const receive=(_:unknown,value:any)=>setStatus(value||{state:'idle'});
+    ipc.on('app-update-status',receive);
+    ipc.invoke('get-app-update-status').then(setStatus).catch(()=>{});
+    return()=>ipc.removeListener('app-update-status',receive);
+  },[]);
+  const check=async()=>{try{setStatus(await ipc?.invoke('check-app-update')||{state:'error'});}catch{setStatus({state:'error'});}};
+  const install=async()=>{try{const result=await ipc?.invoke('install-app-update');if(result?.success)setStatus({state:'installing'});}catch{setStatus({state:'error'});}};
+  const detail=({idle:t('Current version: ','الإصدار الحالي: ')+(status.currentVersion||'—'),unsupported:t('Automatic updates are available in the installed Windows app.','التحديث التلقائي متاح في نسخة Windows المثبتة.'),checking:t('Checking GitHub for an update…','جارٍ التحقق من التحديث على GitHub…'),available:t(`Update ${status.version||''} found. Downloading in the background…`,`وُجد التحديث ${status.version||''}. جارٍ تنزيله بالخلفية…`),downloading:`${t('Downloading update','جارٍ تنزيل التحديث')} · ${Math.round(status.percent||0)}%`,downloaded:t(`Update ${status.version||''} is ready. Choose when to restart and install.`,`التحديث ${status.version||''} جاهز. اختر متى تعيد التشغيل وتثبته.`),installing:t('MOHIVX Island is closing to install the update.','جارٍ إغلاق MOHIVX Island لتثبيت التحديث.'),'up-to-date':t('You have the latest version.','لديك أحدث إصدار.'),cancelled:t('Update download was cancelled. Check again to retry.','أُلغي تنزيل التحديث. تحقق مجددًا لإعادة المحاولة.'),error:t('Could not check for updates. Check your internet connection.','تعذر التحقق من التحديثات. تحقق من اتصال الإنترنت.') } as Record<string,string>)[status.state]||t('Ready to check for updates.','جاهز للتحقق من التحديثات.');
+  return <>
+    <Row title={t('App updates','تحديث التطبيق')} detail={detail}><button className="subtle-button" disabled={!status.supported||['checking','available','downloading','downloaded','installing'].includes(status.state)} onClick={()=>void check()}>{status.state==='checking'?t('Checking…','جارٍ التحقق…'):t('Check now','تحقق الآن')}</button></Row>
+    {status.state==='downloading'&&<Row title={t('Download progress','تقدم التنزيل')}><progress aria-label={t('Update download progress','تقدم تنزيل التحديث')} max={100} value={status.percent||0}/></Row>}
+    {status.state==='downloaded'&&<Row title={t('Restart to install','أعد التشغيل للتثبيت')} detail={t('You can keep working and restart later.','يمكنك متابعة العمل وإعادة التشغيل لاحقًا.')}><button className="subtle-button" onClick={()=>void install()}>{t('Restart and install','إعادة التشغيل والتثبيت')}</button></Row>}
+    <Row title={t('Check automatically','التحقق تلقائيًا')} detail={t('Check on launch and periodically while MOHIVX is open.','تحقق عند التشغيل وبشكل دوري أثناء فتح MOHIVX.')}><Toggle label={t('Check automatically','التحقق تلقائيًا')} checked={autoCheck} onChange={onAutoCheck}/></Row>
+  </>;
+}
 export const SettingsWindow: React.FC = () => {
   const { settings: s, update, status } = useSettings();
   const [dock, setDock] = useState<Dock>('settings');
@@ -195,7 +215,8 @@ export const SettingsWindow: React.FC = () => {
             <Row title={text('Ability volume','مستوى أصوات القدرات')}><input aria-label={text('Ability volume','مستوى أصوات القدرات')} type="range" min="0" max="40" value={Math.round((s.abilitySoundVolume??.16)*100)} onChange={e=>save({abilitySoundVolume:Number(e.target.value)/100})}/></Row>
             <Row title={text('Live voice model','نموذج المحادثة المباشرة')}><input aria-label={text('Live voice model','نموذج المحادثة المباشرة')} className="city-input" value={s.liveVoiceModel} onChange={e=>save({liveVoiceModel:e.target.value})}/></Row>
             <Row title={text('Output device', 'جهاز الإخراج')}><select aria-label={text("Output device","جهاز الإخراج")} value={audio?.defaultDeviceId || audio?.defaultDevice || 'default'} onChange={e => { ipc?.send('set-audio-device', e.target.value); save({ preferredAudioDevice: e.target.value }); }}><option value="default">{text('Windows default', 'افتراضي ويندوز')}</option>{audio?.devices?.map((device: any) => <option key={device.id || device} value={device.id || device}>{device.name || device}</option>)}</select></Row>
-            <Row title={text('Version','الإصدار')} detail={text('Installed on this PC.','النسخة المثبتة على هذا الكمبيوتر.')}><span className="setting-value">{appVersion || '—'}</span><button className="subtle-button" onClick={()=>setDock('links')}>{text('Updates','التحديثات')}</button></Row>
+            <Row title={text('Version','الإصدار')} detail={text('Installed on this PC.','النسخة المثبتة على هذا الكمبيوتر.')}><span className="setting-value">{appVersion || '—'}</span></Row>
+            <AppUpdateRows ar={ar} autoCheck={s.autoCheckUpdates!==false} onAutoCheck={value=>save({autoCheckUpdates:value})}/>
           </div><details className="settings-disclosure"><summary>{text('Advanced system settings','إعدادات النظام المتقدمة')}</summary><div className="settings-card">
             <Row title={text('Low power mode', 'توفير الطاقة')} detail={text('Poll system information less often.', 'تحديث بيانات النظام بوتيرة أقل.')}><Toggle label={text("Low power mode","توفير الطاقة")} checked={s.lowPowerMode} onChange={value => save({ lowPowerMode: value })} /></Row>
             <Row title={text('Output volume', 'مستوى الصوت')} detail={audio?.unavailable ? text('Audio unavailable', 'الصوت غير متاح') : audio ? `${audio.volume ?? 0}%` : text('Reading Windows audio…', 'جارٍ قراءة صوت ويندوز…')}><Volume2 size={15} /><input aria-label={text("Output volume","مستوى الصوت")} type="range" min="0" max="100" disabled={!audio || audio.unavailable} value={audio?.volume ?? 0} onChange={e => { const value = Number(e.target.value); setAudio({ ...audio, volume: value }); ipc?.send('volume-control', { action: 'set', value }); }} /></Row>

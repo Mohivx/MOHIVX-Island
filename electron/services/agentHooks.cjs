@@ -87,6 +87,17 @@ class AgentHooks {
     this.record(event,session,detail);return false;
   }
   removePending(id,reason){const p=this.pending.get(id);if(!p)return;clearTimeout(p.timer);this.pending.delete(id);const s=this.sessions.get(p.sessionId);if(s){s.status=[...this.pending.values()].some(item=>item.sessionId===s.id)?'waiting':reason==='allow'||reason==='answer'?(s.source==='explicit-question-bridge'?'completed':'working'):'idle';this.record(reason,s,p.title);}}
+  keepAlive(id,fingerprint){
+    const p=this.pending.get(String(id));
+    if(!p||!p.questions||p.socket.destroyed||p.expires<=this.now())return {success:false,error:'Question expired.'};
+    if(!equal(fingerprint,p.fingerprint))return {success:false,error:'Question changed. Refresh before answering.'};
+    clearTimeout(p.timer);
+    p.expires=this.now()+(this.options.expiryMs||125000);
+    p.timer=setTimeout(()=>{if(this.pending.has(p.id)){this.removePending(p.id,'expired');p.socket.end();}},Math.max(1,p.expires-this.now()));
+    p.socket.setTimeout(Math.max(1,p.expires-this.now()+1000),()=>p.socket.destroy());
+    this.onChange(this.snapshot());
+    return {success:true,expires:p.expires};
+  }
   decide(id,fingerprint,decision,answers){
     const p=this.pending.get(String(id));
     if(!p||p.socket.destroyed||p.expires<=this.now()){if(p){this.removePending(p.id,'expired');p.socket.end();}return {success:false,error:'Request expired. Review it in the agent.'};}

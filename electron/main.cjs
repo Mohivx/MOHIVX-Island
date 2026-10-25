@@ -38,6 +38,7 @@ const { mergeSettings, isSensitiveClipboard, resolveAudioDevice, CompanionAI, Sc
 const { measureConnection, getWeather } = require('./services/networkTools.cjs');
 const { stageNativeAssets } = require('./services/nativeAssets.cjs');
 const { getStartupConfig } = require('./services/startupConfig.cjs');
+const AppUpdater = require('./services/appUpdater.cjs');
 
 const qaMode = process.env.MOHIVX_QA === '1';
 let logFile = process.env.MOHIVX_DATA_DIR ? path.join(process.env.MOHIVX_DATA_DIR, 'debug.log') : path.join(os.homedir(), 'mohivx_island_debug.log');
@@ -120,6 +121,7 @@ const agentHooks = new AgentHooks(appDataDir,{onChange:snapshot=>{
 }});
 agentCenterService.hooks=agentHooks;
 agentCenterService.hookConfig=new AgentHookConfig(os.homedir(),agentHooks.exe,{binDir,runtimeExe:process.execPath});
+const appUpdater=new AppUpdater({app,dialog,getWindows:()=>[mainWindow,hubWindow],getSettings:()=>currentAppSettings,onStatus:status=>{for(const win of [mainWindow,hubWindow])if(win&&!win.isDestroyed())win.webContents.send('app-update-status',status);},log,qaMode});
 const androidGateway = new AndroidGatewayService(9120, appDataDir, log, {
   encode: text => { if (!safeStorage.isEncryptionAvailable()) throw new Error('Windows secure storage is unavailable.'); return safeStorage.encryptString(text).toString('base64'); },
   decode: text => safeStorage.decryptString(Buffer.from(text,'base64'))
@@ -1967,10 +1969,14 @@ ipcMain.handle('get-app-settings', () => {
 ipcMain.handle('get-app-version', () => {
   return app.getVersion();
 });
+ipcMain.handle('get-app-update-status',()=>appUpdater.snapshot());
+ipcMain.handle('check-app-update',event=>{const win=BrowserWindow.fromWebContents(event.sender);if(win!==mainWindow&&win!==hubWindow)throw Error('Update controls are unavailable in this window.');return appUpdater.check();});
+ipcMain.handle('install-app-update',event=>{const win=BrowserWindow.fromWebContents(event.sender);if(win!==mainWindow&&win!==hubWindow)throw Error('Update controls are unavailable in this window.');return appUpdater.installNow();});
 
 ipcMain.handle('update-app-settings', async (event, partial) => {
   if (partial && typeof partial === 'object') {
     try { saveAppSettings(partial); } catch (error) { return { error: error.message }; }
+    if(partial.autoCheckUpdates===true&&!qaMode)void appUpdater.check();
     if(typeof partial.windowsNotificationsEnabled==='boolean'||typeof partial.islandNotificationsEnabled==='boolean'){windowsNotifications.stop();windowsNotifications.start();}
     if(typeof partial.agentBridgeEnabled==='boolean'){if(partial.agentBridgeEnabled&&!qaMode){try{await agentHooks.start();}catch{agentHooks.error='Agent connection unavailable';}}else agentHooks.stop();}
   }
@@ -2208,6 +2214,7 @@ ipcMain.handle('get-coding-agents-status', async () => {
 ipcMain.handle('agent-approve-action', async (event, id) => {
   return agentCenterService.approveAction(id.id || id,id.optionId,id.fingerprint,id.answers);
 });
+ipcMain.handle('agent-question-keepalive',(_event,{id,fingerprint})=>agentCenterService.keepAliveQuestion(id,fingerprint));
 
 ipcMain.handle('agent-reject-action', async (event, id) => {
   return agentCenterService.rejectAction(id);
@@ -2233,6 +2240,7 @@ app.whenReady().then(() => {
   }
   createWindow();
   createSystemTray();
+  appUpdater.init();
   for(const event of ['display-metrics-changed','display-added','display-removed'])screen.on(event,()=>ipcMain.emit('set-window-mode',null,lastWindowRequest));
   void refreshFullscreenWatcher();
   if (!qaMode) startClipboardMonitor();

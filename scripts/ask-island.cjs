@@ -1,7 +1,7 @@
 // Explicit local question bridge. Native code verifies the pipe owner's Windows SID.
 const path=require('node:path'),os=require('node:os'),crypto=require('node:crypto'),{spawn,execFileSync}=require('node:child_process');
 let sequence=0;
-async function ask(input,{dir=process.env.MOHIVX_DATA_DIR||path.join(os.homedir(),'.mohivx-island'),timeout=Number(process.env.MOHIVX_QUESTION_TIMEOUT_MS)||120000,endpoint=process.env.MOHIVX_HOOK_PIPE}={}){
+async function ask(input,{dir=process.env.MOHIVX_DATA_DIR||path.join(os.homedir(),'.mohivx-island'),timeout=Number(process.env.MOHIVX_QUESTION_TIMEOUT_MS)||21600000,endpoint=process.env.MOHIVX_HOOK_PIPE}={}){
  const questions=input?.questions;if(!Array.isArray(questions)||!questions.length||questions.length>4)throw Error('Provide one to four questions.');
  for(const q of questions)if(typeof q.question!=='string'||!q.question.trim()||q.question.length>1000||!Array.isArray(q.options)||q.options.length>8||q.options.some(o=>typeof o.label!=='string'||!o.label.trim()||o.label.length>200||o.description&&typeof o.description!=='string'))throw Error('Invalid question or options.');
  if(new Set(questions.map(q=>q.question)).size!==questions.length)throw Error('Question text must be unique.');

@@ -66,7 +66,8 @@
         "ar_SA"
       ],
       "displayLanguageSelector": true,
-      "license": "LICENSE"
+      "license": "LICENSE",
+      "artifactName": "MOHIVX-Island-Setup-${version}.${ext}"
     },
     "extraResources": [
       {
@@ -76,12 +77,21 @@
           "**/*"
         ]
       }
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Mohivx",
+        "repo": "MOHIVX-Island",
+        "releaseType": "release"
+      }
     ]
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
     "@types/canvas-confetti": "^1.9.0",
     "canvas-confetti": "^1.9.4",
+    "electron-updater": "6.8.11",
     "lucide-react": "^1.57.0",
     "qrcode": "1.5.4",
     "react": "^19.2.8",
@@ -100,5 +110,9 @@
     "typescript": "~6.0.2",
     "vite": "^8.3.0"
   },
-  "license": "GPL-3.0-only"
+  "license": "GPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Mohivx/MOHIVX-Island.git"
+  }
 }

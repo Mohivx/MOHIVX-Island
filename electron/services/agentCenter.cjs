@@ -3,6 +3,7 @@ const path=require('node:path');
 const os=require('node:os');
 class AgentCenterService {
   constructor(log=()=>{}){this.log=log;this.hermes=null;this.hooks=null;this.hookConfig=null;}
+  keepAliveQuestion(id,fingerprint){if(!String(id).startsWith('hook:'))return {success:false,error:'Question is unavailable.'};return this.hooks?.keepAlive(id,fingerprint)||{success:false,error:'Local agent connection unavailable.'};}
   approveAction(id,optionId,fingerprint,answers){if(String(id).startsWith('hook:')){const decision={allow_once:'allow',deny:'deny',answer:'answer',reply_terminal:'defer'}[optionId];if(!decision)return {success:false,error:'Unsupported decision.'};return this.hooks?.decide(id,fingerprint,decision,answers)||{success:false,error:'Local agent connection unavailable.'};}return this.hermes?.client.decide(String(id),optionId)||{success:false,error:'No supported approval connection.'};}
   rejectAction(input){const id=typeof input==='object'?input.id:input;if(String(id).startsWith('hook:'))return this.hooks?.decide(id,input.fingerprint,'deny')||{success:false};return this.hermes?.client.decide(String(id),null)||{success:false,error:'No supported approval connection.'};}
   async getAllStatuses(){
