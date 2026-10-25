@@ -342,8 +342,8 @@ IMPORTANT AGENT INSTRUCTIONS:
 
   // The Main Agent Execution Function
   async runPrompt(userPrompt, settings = {}, conversationHistory = []) {
-    const apiKey = (settings.geminiKey || '').trim();
-    if (!apiKey) {
+    const apiKeys = [settings.geminiKey, settings.geminiKey2].map(key => (key || '').trim()).filter(Boolean);
+    if (!apiKeys.length) {
       return {
         success: false,
         noApiKey: true,
@@ -391,7 +391,8 @@ IMPORTANT AGENT INSTRUCTIONS:
 
     try {
       this.log('Sending desktop assistant request.');
-      const response = await this.callGeminiApi(apiKey, payload);
+      let apiKey=apiKeys[0],response;
+      try { response=await this.callGeminiApi(apiKey,payload); } catch(error) { if(apiKeys.length<2||!/(?:400|401|403|429)|api.?key|quota|unauthori[sz]ed|forbidden/i.test(error.message||''))throw error; apiKey=apiKeys[1]; response=await this.callGeminiApi(apiKey,payload); }
 
       const candidate = response.candidates && response.candidates[0];
       if (!candidate || !candidate.content) {

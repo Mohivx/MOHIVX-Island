@@ -1,23 +1,35 @@
-# MOHIVX Island V1.0.0
+# MOHIVX Island 1.1.0
 
-أول إصدار عام من MOHIVX Island. يضم نسخة الكمبيوتر المحمولة والمثبّت وتطبيق Android.
+## What's new
 
-## أبرز ما يتضمنه
+- Clearer phone screen and camera sharing controls, with separate open-window actions and reliable stop behavior.
+- Phone preview layout uses the device's screen proportions and available wallpaper or live-screen image.
+- Island width and height can be adjusted independently while collapsed.
+- Gemini chat and agent requests can use a saved backup key when the primary key is unavailable.
+- The Power tab is hidden by default and can still be enabled in tab settings.
+- README and release information are now bilingual (Arabic and English).
 
-- جزيرة سطح مكتب قابلة للتخصيص مع عرض الوسائط وعناصر التحكم والإشعارات.
-- إعدادات الكمبيوتر بتصميمها الحالي وخيار أسود، مع اختيار جهة أزرار النافذة.
-- تطبيق Android مرافق بإعدادات متناسقة، واتصال مباشر مشفّر مع الكمبيوتر دون خادم وسيط.
-- موافقات الوكلاء على الهاتف مع خيارات جاهزة وخانة رد مخصص، وتأكيد آمن قبل الإرسال.
-- دعم ميزات الهاتف المتاحة حسب الصلاحيات، بما فيها مشاركة الشاشة والكاميرا والميكروفون والإشعارات والملفات.
+## التحسينات
 
-## ملفات التحميل
+- توضيح أزرار مشاركة شاشة الهاتف والكاميرا، وفصل فتح نافذة العرض عن بدء/إيقاف المشاركة.
+- معاينة الهاتف تراعي أبعاد شاشته وتعرض الخلفية المتاحة أو صورة البث المباشر.
+- ضبط عرض الجزيرة وارتفاعها كلٌّ على حدة عند تصغيرها.
+- يمكن لطلبات Gemini في المحادثة والوكلاء استخدام مفتاح احتياطي محفوظ عند تعذر المفتاح الأساسي.
+- إخفاء تبويب الطاقة افتراضيًا مع بقائه قابلًا للإظهار من إعدادات التبويبات.
+- تحديث وصف المشروع وملاحظات الإصدار باللغتين العربية والإنجليزية.
 
-- MOHIVX Island 1.0.0.exe — النسخة المحمولة للكمبيوتر.
-- MOHIVX Island Setup 1.0.0.exe — مثبّت الكمبيوتر.
-- MOHIVX Island 1.0.0.apk — تطبيق Android (versionCode 161 للتحديث فوق النسخة التجريبية السابقة).
+## Downloads | ملفات التحميل
 
-هذه مسودة إصدار لمراجعتك قبل النشر العام.
+- **Windows portable:** MOHIVX Island 1.1.0.exe
+- **Windows installer:** MOHIVX-Island-Setup-1.1.0.exe
+- **Android APK:** نشر APK يتطلب توقيعه بمفتاح الإصدار المعتمد للمشروع.
 
-## الترخيص
+- **نسخة Windows المحمولة:** MOHIVX Island 1.1.0.exe
+- **مثبّت Windows:** MOHIVX-Island-Setup-1.1.0.exe
+- **تطبيق Android:** يتطلب نشر APK توقيعه بمفتاح الإصدار المعتمد للمشروع.
 
-كود MOHIVX Island الأصلي مرخص وفق GNU GPL-3.0-only. تحتفظ مكونات الطرف الثالث بتراخيصها وإشعاراتها الخاصة، ومنها حزمة VB-CABLE ذات شروط VB-Audio المستقلة.
+## License | الترخيص
+
+MOHIVX Island is licensed under GNU GPL-3.0-only. Third-party components retain their own licenses and notices.
+
+كود MOHIVX Island مرخص وفق GNU GPL-3.0-only. تحتفظ مكونات الطرف الثالث بتراخيصها وإشعاراتها الخاصة.

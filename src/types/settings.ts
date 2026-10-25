@@ -68,7 +68,9 @@ export interface MohivxSettings {
   theme: AppTheme;
   customAccentColor: string;
   islandShape: IslandShape;
-  islandScale: number; // 0.8 to 1.3
+  islandScale: number; // legacy compatibility
+  islandWidthScale: number; // collapsed island width, 0.5 to 2.0
+  islandHeightScale: number; // collapsed island height, 0.5 to 2.0
   islandGlowStrength:number;
   islandGlowSpread:number;
   islandStroke:'off'|'thin'|'medium'|'thick';
@@ -153,6 +155,7 @@ export interface MohivxSettings {
   hermesModel: string;
   hermesAutoApproveSafe: boolean;
   geminiKey: string;
+  geminiKey2: string;
   customDirectives: string;
   voiceInputEnabled: boolean;
 
@@ -201,7 +204,7 @@ export const DEFAULT_MOHIVX_SETTINGS: MohivxSettings = {
   advancedMode:false,
   uiSounds:true,uiSoundVolume:.12,abilitySoundVolume:.16,liveVoiceModel:'gemini-3.8-live',replySpeed:'patient',
   historySide:'left',
-  windowControlsSide:'left',
+  windowControlsSide:'right',
   panelStyle:'glass',panelCorners:'rounded',
   shareAppContext:false,
   userName:'',weatherCity:'',
@@ -217,6 +220,8 @@ export const DEFAULT_MOHIVX_SETTINGS: MohivxSettings = {
   customAccentColor: '#8bbcff',
   islandShape: 'classic',
   islandScale: 1.0,
+  islandWidthScale: 1.0,
+  islandHeightScale: 1.0,
   islandGlowStrength:1,
   islandGlowSpread:1,
   islandStroke:'off',
@@ -238,7 +243,7 @@ export const DEFAULT_MOHIVX_SETTINGS: MohivxSettings = {
     clipboard: true,
     apps: true,
     wallpaper: true,
-    power: true,
+    power: false,
   },
   tabOrder: ['agents','phone', 'controls', 'today', 'stats', 'clipboard', 'apps', 'wallpaper', 'power', 'ai'],
   defaultTab: 'controls',
@@ -288,6 +293,7 @@ export const DEFAULT_MOHIVX_SETTINGS: MohivxSettings = {
   hermesModel: 'default',
   hermesAutoApproveSafe: true,
   geminiKey: '',
+  geminiKey2: '',
   customDirectives: 'Be concise, accurate, and execute tasks directly.',
   voiceInputEnabled: true,
 

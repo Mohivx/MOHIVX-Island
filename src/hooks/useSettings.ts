@@ -15,7 +15,7 @@ export type CompanionSettings = MohivxSettings & {
 export function normalizeSettings(value: any = {}): CompanionSettings {
   const base = DEFAULT_MOHIVX_SETTINGS;
   const tabOrder = normalizeTabOrder(value.tabOrder, base.tabOrder);
-  const visibleTabs = { ...base.visibleTabs, ...value.visibleTabs };
+  const visibleTabs = { ...base.visibleTabs, ...value.visibleTabs, ...(Number(value.baselineVersion || 0) < 2 ? { power: false } : {}) };
   const supportedTabs = new Set(base.tabOrder);
   const defaultTab = typeof value.defaultTab === 'string' &&
     supportedTabs.has(value.defaultTab) && visibleTabs[value.defaultTab as keyof typeof visibleTabs] !== false
@@ -38,7 +38,9 @@ export function normalizeSettings(value: any = {}): CompanionSettings {
     tabOrder,
     defaultTab,
     phoneDeviceLayout,
-    windowControlsSide: value.windowControlsSide === 'right' ? 'right' : 'left',
+    windowControlsSide: value.windowControlsSide === 'left' ? 'left' : 'right',
+    islandWidthScale:typeof value.islandWidthScale==='number'&&Number.isFinite(value.islandWidthScale)?Math.max(.5,Math.min(2,value.islandWidthScale)):Math.max(.5,Math.min(2,typeof value.islandScale==='number'?value.islandScale:1)),
+    islandHeightScale:typeof value.islandHeightScale==='number'&&Number.isFinite(value.islandHeightScale)?Math.max(.5,Math.min(2,value.islandHeightScale)):Math.max(.5,Math.min(2,typeof value.islandScale==='number'?value.islandScale:1)),
     islandGlowStrength:typeof value.islandGlowStrength==='number'&&Number.isFinite(value.islandGlowStrength)?Math.max(0,Math.min(1.5,value.islandGlowStrength)):1,
     islandGlowSpread:typeof value.islandGlowSpread==='number'&&Number.isFinite(value.islandGlowSpread)?Math.max(.5,Math.min(1.5,value.islandGlowSpread)):1,
     ...notificationPreferences(value),

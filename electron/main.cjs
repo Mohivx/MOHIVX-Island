@@ -1687,11 +1687,11 @@ const legacySettingsFilePath = path.join(os.homedir(), '.hitodama-ai', 'settings
 
 const defaultAppSettings = {
   agentBridgeEnabled:true,agentShowRequests:true,agentNotifyOnComplete:true,agentNotifyOnError:true,agentSyncToAndroid:true,wallpaperTransition:true,phoneCameraDevice:'',phoneMicDevice:'',phoneMicSink:'',phoneMicAuto:true,phoneSelectedDevice:'',phoneDeviceLayout:{},
-  appLang: 'en',userName:'',weatherCity:'',historySide:'left',advancedMode:false,uiSounds:true,uiSoundVolume:.12,abilitySoundVolume:.16,liveVoiceModel:'gemini-3.8-live',replySpeed:'patient',
-  baselineVersion: 1,
+  appLang: 'en',userName:'',weatherCity:'',historySide:'left',windowControlsSide:'right',advancedMode:false,uiSounds:true,uiSoundVolume:.12,abilitySoundVolume:.16,liveVoiceModel:'gemini-3.8-live',replySpeed:'patient',
+  baselineVersion: 2,
   aiEnabled: true, aiProvider: 'gemini-cloud', voiceInputEnabled: true,
-  theme: 'original-blue', customAccentColor: '', islandShape: 'classic', islandScale: 1,islandGlowStrength:1,islandGlowSpread:1,islandStroke:'off',islandStrokeColor:'#8bbcff',clockWhileAsleep:false,reserveSpace:true,
-  visibleTabs: { agents:true, phone:true, ai: true, controls: true, today: true, stats: true, clipboard: true, apps: true, wallpaper: true, power: true },
+  theme: 'original-blue', customAccentColor: '', islandShape: 'classic', islandScale: 1,islandWidthScale:1,islandHeightScale:1,islandGlowStrength:1,islandGlowSpread:1,islandStroke:'off',islandStrokeColor:'#8bbcff',clockWhileAsleep:false,reserveSpace:true,
+  visibleTabs: { agents:true, phone:true, ai: true, controls: true, today: true, stats: true, clipboard: true, apps: true, wallpaper: true, power: false },
   tabOrder: ['agents','phone','controls', 'today', 'stats', 'clipboard', 'apps', 'wallpaper', 'power', 'ai'],
   defaultTab: 'controls',
   islandNotificationsEnabled:true,windowsNotificationsEnabled:true,mohivxToastsEnabled:false,
@@ -1699,7 +1699,7 @@ const defaultAppSettings = {
   musicVisualizerStyle:'bars',musicPresentation:'compact',
   animationSpeed: 'smooth', clipboardMaxItems: 50, clipboardPersist: true, clipboardFilterSensitive: true,
   localOnlyMode: false, clearHistoryOnExit: false,
-  geminiKey: '',
+  geminiKey: '', geminiKey2:'',
   tavilyKey: '',
   responseStyle: 'concise',
   aiPersonality: 'chad',
@@ -1715,7 +1715,7 @@ const defaultAppSettings = {
 
 function decodeSettings(data) {
   const result = { ...data };
-  for (const name of ['geminiKey', 'tavilyKey', 'providerKey']) {
+  for (const name of ['geminiKey', 'geminiKey2', 'tavilyKey', 'providerKey']) {
     if (data[`${name}Encrypted`]) {
       try { result[name] = safeStorage.decryptString(Buffer.from(data[`${name}Encrypted`], 'base64')); }
       catch { result[name] = ''; }
@@ -1723,13 +1723,20 @@ function decodeSettings(data) {
     delete result[`${name}Encrypted`];
   }
   if (!result.baselineVersion) Object.assign(result, { baselineVersion: 1, aiProvider: 'gemini-cloud', theme: 'original-blue', customAccentColor: '', islandShape: 'classic', islandScale: 1, visibleTabs: { ...defaultAppSettings.visibleTabs } });
+  if ((result.baselineVersion || 0) < 2) {
+    result.visibleTabs = { ...defaultAppSettings.visibleTabs, ...(result.visibleTabs || {}), power: false };
+    result.windowControlsSide = 'right';
+    result.islandWidthScale = typeof result.islandScale === 'number' ? result.islandScale : 1;
+    result.islandHeightScale = typeof result.islandScale === 'number' ? result.islandScale : 1;
+    result.baselineVersion = 2;
+  }
   if(result.themeRevision!==2)Object.assign(result,{theme:'original-blue',customAccentColor:'#8bbcff',themeRevision:2});
   if (result.tavilyKey === 'tvly-prod-demo-key-CULP') result.tavilyKey = '';
   return {...mergeSettings(defaultAppSettings, result),...notificationPreferences(result)};
 }
 function encodeSettings(settings) {
   const data = { ...settings };
-  for (const name of ['geminiKey', 'tavilyKey', 'providerKey']) {
+  for (const name of ['geminiKey', 'geminiKey2', 'tavilyKey', 'providerKey']) {
     delete data[`${name}Encrypted`];
     if (data[name]) {
       if (!safeStorage.isEncryptionAvailable()) throw new Error('Windows credential encryption is unavailable. The API key was not saved.');
@@ -2177,7 +2184,7 @@ ipcMain.on('open-companion-tool', (_event, tool) => void openCompanionTool(tool)
 ipcMain.handle('export-preferences', async () => {
   const result = await dialog.showSaveDialog(hubWindow, { defaultPath: 'MOHIVX-preferences.json', filters: [{ name: 'JSON', extensions: ['json'] }] });
   if (result.canceled) return { success: false, canceled: true };
-  const { geminiKey, tavilyKey, providerKey, ...preferences } = currentAppSettings;
+  const { geminiKey, geminiKey2, tavilyKey, providerKey, ...preferences } = currentAppSettings;
   fs.writeFileSync(result.filePath, JSON.stringify(preferences, null, 2)); return { success: true };
 });
 async function openCompanionTool(tool, target = 0) {

@@ -2,7 +2,7 @@ export const COLLAPSED_SHAPES: Record<string, { width: number; height: number; i
 export function animationDuration(speed: string, reduced?: boolean): number;
 export function islandEdge(position?: string): 'top'|'left'|'right'|'bottom';
 export function collapsedSize(shape: string, position?: string, playing?: boolean, presentation?: string): { width: number; height: number; inset: number };
-export function surfaceViewport(width: number, height: number, shape: string, scale?: number, position?: string, audio?: boolean | {bars?:boolean;satellite?:boolean}): { width: number; height: number };
+export function surfaceViewport(width: number, height: number, shape: string, scale?: number, position?: string, audio?: boolean | {bars?:boolean;satellite?:boolean}, scaleY?: number): { width: number; height: number };
 export function musicLayout(settings: {musicTheme?:string;musicSizing?:string;musicPresentation?:string}): {theme:string;enabled:boolean;fixed:boolean;presentation:string;bars:boolean;satellite:boolean};
 export function musicActivity(media:{title?:string;isPlaying?:boolean},audible:boolean,enabled?:boolean): {visible:boolean;hasSession:boolean;outputOnly:boolean};
 export function fitSurfaceHeight(preferred: number, shape: string, scale?: number, availableHeight?: number, position?: string): number;

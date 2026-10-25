@@ -21,12 +21,12 @@ export function collapsedSize(shape, position = 'top', playing = false, presenta
   return ['left','right'].includes(islandEdge(position)) ? {...size,width:size.height,height:size.width} : size;
 }
 
-export function surfaceViewport(width, height, shape, scale = 1, position = 'top', audio = false) {
+export function surfaceViewport(width, height, shape, scale = 1, position = 'top', audio = false, scaleY = scale) {
   const inset = COLLAPSED_SHAPES[shape]?.inset || 0;
   const side = ['left','right'].includes(islandEdge(position));
   const bars=audio===true||audio?.bars, satellite=audio?.satellite;
   const earGutter = shape==='classic'&&!side ? Math.max(12,Math.ceil(12*scale)) : 12;
-  return {width:Math.ceil((satellite&&side?Math.max(width,28):width)*scale+(side?inset+(bars?24:6):satellite?Math.max(88,earGutter*2):bars?Math.max(60,earGutter*2):earGutter*2)),height:Math.ceil((satellite&&!side?Math.max(height,28):height)*scale+(side?satellite?88:bars?60:24:inset+(bars?24:6)))};
+  return {width:Math.ceil((satellite&&side?Math.max(width,28):width)*scale+(side?inset+(bars?24:6):satellite?Math.max(88,earGutter*2):bars?Math.max(60,earGutter*2):earGutter*2)),height:Math.ceil((satellite&&!side?Math.max(height,28):height)*scaleY+(side?satellite?88:bars?60:24:inset+(bars?24:6)))};
 }
 
 export function musicLayout(settings) {

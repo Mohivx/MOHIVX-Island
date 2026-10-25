@@ -34,14 +34,16 @@ class CompanionAI {
     try {
       if (settings.localOnlyMode) throw new Error('Local-only mode is enabled. Cloud AI requests are disabled.');
       if (settings.aiEnabled === false) throw new Error('AI is disabled.');
-      if (!settings.geminiKey) throw new Error('Add your Gemini API key in Settings → API keys.');
+      const apiKeys=[settings.geminiKey,settings.geminiKey2].map(key=>(key||'').trim()).filter(Boolean);
+      if (!apiKeys.length) throw new Error('Add your Gemini API key in Settings → API keys.');
       if (audio && settings.voiceInputEnabled === false) throw new Error('Voice input is disabled in Settings → Behavior.');
       const parts = [{ text: String(prompt || 'Describe this selection.').slice(0, 30000) }];
       if (image) parts.push(mediaPart(image, /^image\/(png|jpeg|webp)$/));
       if (audio) parts.push(mediaPart(audio, /^audio\/(webm|ogg|wav|mp3|mpeg|mp4)$/));
-      const response = await this.agent.callGeminiApi(settings.geminiKey, {
-        contents: [{ role: 'user', parts }], generationConfig: { temperature: mode === 'dictation' ? 0 : 0.4, maxOutputTokens: 1800 },
-      });
+      const payload={contents: [{ role: 'user', parts }], generationConfig: { temperature: mode === 'dictation' ? 0 : 0.4, maxOutputTokens: 1800 }};
+      let response;
+      try { response=await this.agent.callGeminiApi(apiKeys[0],payload); }
+      catch(error) { if(apiKeys.length<2||!/(?:400|401|403|429)|api.?key|quota|unauthori[sz]ed|forbidden/i.test(error.message||''))throw error; response=await this.agent.callGeminiApi(apiKeys[1],payload); }
       const text = (response.candidates?.[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || '').join('').trim();
       if (!text && mode !== 'dictation') throw new Error('The model returned no answer.');
       return { success: true, text };
@@ -51,12 +53,13 @@ class CompanionAI {
     const settings = this.getSettings();
     try {
       if (settings.localOnlyMode || settings.aiEnabled === false) throw new Error('Cloud AI is disabled.');
-      if (!settings.geminiKey) throw new Error('Add your Gemini API key to preview this voice.');
+      const apiKeys=[settings.geminiKey,settings.geminiKey2].map(key=>(key||'').trim()).filter(Boolean);
+      if (!apiKeys.length) throw new Error('Add your Gemini API key to preview this voice.');
       if (!require('../data/voices.json').includes(voice)) throw new Error('Voice unavailable.');
-      const result = await this.agent._makeRequest(settings.geminiKey, {
-        contents: [{ parts: [{ text: String(text).slice(0, 4000) }] }],
-        generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } } },
-      }, settings.ttsModel || 'gemini-3.8-flash-lite-tts');
+      const payload={contents: [{ parts: [{ text: String(text).slice(0, 4000) }] }],generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } }}};
+      let result;
+      try { result=await this.agent._makeRequest(apiKeys[0],payload,settings.ttsModel||'gemini-3.8-flash-lite-tts'); }
+      catch(error) { if(apiKeys.length<2||!/(?:400|401|403|429)|api.?key|quota|unauthori[sz]ed|forbidden/i.test(error.message||''))throw error; result=await this.agent._makeRequest(apiKeys[1],payload,settings.ttsModel||'gemini-3.8-flash-lite-tts'); }
       const output = result.candidates?.[0]?.content?.parts?.find(part => part.inlineData)?.inlineData;
       if (!output?.data) throw new Error('The voice service returned no audio.');
       return { success: true, audio: output.data, mimeType: output.mimeType };

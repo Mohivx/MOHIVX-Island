@@ -25,7 +25,7 @@ export function PhoneDeviceMap({devices,frames,snapshots,selected,onSelect}:Prop
  const worldWidth=Math.max(1,maxX-minX),worldHeight=Math.max(1,maxY-minY);
  const screenScale=hasScreens?Math.max(.035,Math.min(.24,(width-260)/worldWidth,190/worldHeight)):0;
  const displayWidth=worldWidth*screenScale,displayHeight=worldHeight*screenScale,displayLeft=Math.max(8,width-displayWidth-12),displayTop=48;
- const height=Math.max(300,displayTop+displayHeight+30),cardWidth=width>460?198:178,cardHeight=width>460?124:118;
+ const height=Math.max(300,displayTop+displayHeight+30),cardWidth=140,cardHeight=208;
  const monitorRects=screenList.map(display=>({display,left:displayLeft+(display.bounds.x-minX)*screenScale,top:displayTop+(display.bounds.y-minY)*screenScale,width:display.bounds.width*screenScale,height:display.bounds.height*screenScale}));
  const primaryRect=monitorRects.find(rect=>rect.display.primary)||monitorRects[0];
  const initial=(index:number):Position=>{
@@ -59,10 +59,10 @@ export function PhoneDeviceMap({devices,frames,snapshots,selected,onSelect}:Prop
      <div className="phone-map-monitor-screen"><Monitor size={Math.min(26,Math.max(15,displayW/10))}/></div><span>{display.name}{display.primary?` · ${t('Primary','رئيسية')}`:''}</span>
     </div>)}
    {devices.map((device,index)=>{
-    const snapshot=snapshots[device.id]||{},status=snapshot.status||{},frame=frameFor(device.id),display=status.display||((frame?.width&&frame?.height)?{width:frame.width,height:frame.height}:null),w=display?.width||9,h=display?.height||19,online=Date.now()-(snapshot.at||0)<15000,BatteryIcon=status.charging?BatteryCharging:Battery;
+    const snapshot=snapshots[device.id]||{},status=snapshot.status||{},frame=frameFor(device.id),display=status.display||((frame?.width&&frame?.height)?{width:frame.width,height:frame.height}:null),w=display?.width||9,h=display?.height||19,screenImage=frame?.dataUrl||status.wallpaper||'',online=Date.now()-(snapshot.at||0)<15000,BatteryIcon=status.charging?BatteryCharging:Battery;
     const placed=position(device,index);
     return <div key={device.id} role="button" tabIndex={0} aria-pressed={selected===device.id} aria-label={t(`Select ${device.name}; drag around the display map`,`اختر ${device.name} واسحبه على مخطط الشاشات`)} className="phone-map-device" data-selected={selected===device.id} data-online={online} style={{left:`${placed.x*100}%`,top:`${placed.y*100}%`,transform:`translate(${-placed.x*100}%,${-placed.y*100}%)`}} onPointerDown={e=>start(e,device,index)} onPointerMove={move} onPointerUp={e=>void finish(e)} onPointerCancel={cancel} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();onSelect(device.id);}}}>
-      <div className="phone-map-preview" style={{width:Math.max(31,Math.min(75,72*w/h)),height:72,aspectRatio:`${w}/${h}`}}>{frame?.dataUrl?<img src={frame.dataUrl} alt="" draggable={false}/>:<Smartphone size={23}/>}</div>
+      <div className="phone-map-preview" data-live={Boolean(frame?.dataUrl)} data-wallpaper={!frame?.dataUrl&&Boolean(status.wallpaper)} style={{width:Math.max(48,Math.min(108,132*w/h)),height:132,aspectRatio:`${w}/${h}`}}>{screenImage?<img src={screenImage} alt="" draggable={false}/>:<Smartphone size={23}/>}</div>
       <div className="phone-map-info"><b title={device.name}>{device.name}</b><span className="phone-map-status"><i/>{online?t('Connected','متصل'):t('Offline','غير متصل')}</span><span className="phone-map-meta">{display?`${w} × ${h}`:t('Waiting for size','بانتظار الأبعاد')}</span>{Number.isInteger(status.battery)&&<span className="phone-map-battery"><BatteryIcon size={12}/>{status.battery}%</span>}</div>
       <Grip className="phone-map-grip" size={14}/><Wifi className="phone-map-wifi" size={13}/>
     </div>;

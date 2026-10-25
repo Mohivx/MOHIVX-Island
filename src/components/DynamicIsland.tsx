@@ -497,8 +497,8 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
     const move = (event: MouseEvent) => {
       if(showCircleToAsk||showDictation||showScheduled||showLoadout||showAddAppModal||pickerOpen){ignore(false);return;}
       const surface = surfaceRef.current; if (!surface) return;
-      const style = getComputedStyle(surface), scale = appSettings.islandScale || 1;
-      const radii = {topLeft:parseFloat(style.borderTopLeftRadius)*scale,topRight:parseFloat(style.borderTopRightRadius)*scale,bottomLeft:parseFloat(style.borderBottomLeftRadius)*scale,bottomRight:parseFloat(style.borderBottomRightRadius)*scale};
+      const style = getComputedStyle(surface), sx = islandStage==='collapsed'?(appSettings.islandWidthScale||appSettings.islandScale||1):1, sy = islandStage==='collapsed'?(appSettings.islandHeightScale||appSettings.islandScale||1):1, radiusScale=Math.min(sx,sy);
+      const radii = {topLeft:parseFloat(style.borderTopLeftRadius)*radiusScale,topRight:parseFloat(style.borderTopRightRadius)*radiusScale,bottomLeft:parseFloat(style.borderBottomLeftRadius)*radiusScale,bottomRight:parseFloat(style.borderBottomRightRadius)*radiusScale};
       const satellite=document.querySelector('[data-music-satellite]')?.getBoundingClientRect()||null;
       ignore(!containsSurfacePoint(surface.getBoundingClientRect(), event.clientX, event.clientY, radii)&&!containsSurfacePoint(satellite,event.clientX,event.clientY,999));
     };
@@ -509,7 +509,7 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
     document.addEventListener('mouseleave', leave);
     window.addEventListener('blur', leave);
     return () => {window.removeEventListener('mousemove',move);document.removeEventListener('mouseleave',leave);window.removeEventListener('blur',leave);};
-  }, [islandStage, appSettings.islandShape, appSettings.islandScale, appSettings.position,showCircleToAsk,showDictation,showScheduled,showLoadout,showAddAppModal,pickerOpen]);
+  }, [islandStage, appSettings.islandShape, appSettings.islandScale, appSettings.islandWidthScale, appSettings.islandHeightScale, appSettings.position,showCircleToAsk,showDictation,showScheduled,showLoadout,showAddAppModal,pickerOpen]);
 
   const outputAudio=useOutputAudio();
   const music=musicLayout(appSettings);
@@ -1356,11 +1356,13 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
       : TAB_WIDTHS[activeTab];
 
   const morphDuration = animationDuration(appSettings.animationSpeed, reduceMotion||Boolean(notices.current)&&appSettings.notificationMotion==='instant');
-  const islandScale = appSettings.islandScale || 1;
-  const earGutter=currentShape==='classic'&&!sideEdge?Math.max(12,Math.ceil(12*islandScale)):12;
-  const maxSurfaceWidth = Math.max(1,(availableScreen.width-earGutter*2)/islandScale);
+  const scaleCollapsed = islandStage==='collapsed'&&!noticeCompact&&!notchNotification;
+  const islandScaleX = scaleCollapsed?(appSettings.islandWidthScale||appSettings.islandScale||1):1;
+  const islandScaleY = scaleCollapsed?(appSettings.islandHeightScale||appSettings.islandScale||1):1;
+  const earGutter=currentShape==='classic'&&!sideEdge?Math.max(12,Math.ceil(12*islandScaleX)):12;
+  const maxSurfaceWidth = Math.max(1,availableScreen.width-earGutter*2);
   const drawerWidth = Math.min(TAB_WIDTHS[activeTab],maxSurfaceWidth);
-  const maxDrawerHeight = sectionHeightLimit(activeTab,currentShape,islandScale,availableScreen.height,edge);
+  const maxDrawerHeight = sectionHeightLimit(activeTab,currentShape,1,availableScreen.height,edge);
   const drawerLayoutKey = `${activeTab}:${drawerWidth}:${maxDrawerHeight}:${appLang}`;
   const drawerReady = drawerMeasurement.key===drawerLayoutKey && drawerMeasurement.height>0;
   const drawerHeight = Math.min(drawerMeasurement.height || 1,maxDrawerHeight);
@@ -1368,7 +1370,8 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
   const surfaceHeight = notchNotification ? 46 : noticeCompact ? noticeHeight : heightForStage(islandStage);
   const classicRadius=Math.min(islandStage==='collapsed'&&!noticeCompact?10:28,surfaceHeight/2,Math.min(shellWidth,maxSurfaceWidth)/2);
   const classicRadii=({top:`0 0 ${classicRadius}px ${classicRadius}px`,bottom:`${classicRadius}px ${classicRadius}px 0 0`,left:`0 ${classicRadius}px ${classicRadius}px 0`,right:`${classicRadius}px 0 0 ${classicRadius}px`})[edge];
-  const earSize=Math.min(12,Math.max(0,surfaceHeight-classicRadius))*islandScale;
+  const earBase=Math.min(12,Math.max(0,surfaceHeight-classicRadius));
+  const earWidth=earBase*islandScaleX,earHeight=earBase*islandScaleY;
   const closing = islandStage==='collapsed' && paintedStage!=='collapsed';
   const contentStage = closing ? paintedStage : islandStage;
   useLayoutEffect(() => {
@@ -1409,8 +1412,8 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
     if (!electron || showCircleToAsk || showDictation || showScheduled || showLoadout) return;
     // Wait for the measurement before resizing either axis on a section change.
     if (islandStage==='drawer' && !notchNotification && !drawerReady) return;
-    const width = Math.min(shellWidth,maxSurfaceWidth);
-    const target = surfaceViewport(width, surfaceHeight, currentShape, islandScale,edge,{bars:musicBars,satellite:musicSatellite});
+    const width = Math.min(shellWidth,maxSurfaceWidth/islandScaleX);
+    const target = surfaceViewport(width, surfaceHeight, currentShape, islandScaleX,edge,{bars:musicBars,satellite:musicSatellite},islandScaleY);
     // Grow before drawing, keep space throughout a close animation, then fit the final shape.
     if (target.width > window.innerWidth || target.height > window.innerHeight) {
       electron.ipcRenderer.send('set-window-mode', {mode:islandStage,width:Math.max(window.innerWidth,target.width),height:Math.max(window.innerHeight,target.height)});
@@ -1418,7 +1421,7 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
     const finish = () => electron.ipcRenderer.send('set-window-mode', {mode:islandStage,...target});
     const timer = setTimeout(finish, morphDuration + 40);
     return () => clearTimeout(timer);
-  }, [shellWidth, surfaceHeight, islandStage, currentShape, islandScale, edge, morphDuration, maxSurfaceWidth, drawerReady, notchNotification, musicBars, musicSatellite, showCircleToAsk, showDictation, showScheduled, showLoadout]);
+  }, [shellWidth, surfaceHeight, islandStage, currentShape, islandScaleX, islandScaleY, edge, morphDuration, maxSurfaceWidth, drawerReady, notchNotification, musicBars, musicSatellite, showCircleToAsk, showDictation, showScheduled, showLoadout]);
 
   return (
     <div
@@ -1437,19 +1440,19 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
         className="relative shrink-0 flow-root dynamic-island-shell island-anchor"
         style={{
           '--island-duration': `${morphDuration}ms`,
-          width: Math.min(shellWidth,maxSurfaceWidth)*islandScale,
-          height: surfaceHeight*islandScale,
+          width: Math.min(shellWidth,maxSurfaceWidth/islandScaleX)*islandScaleX,
+          height: surfaceHeight*islandScaleY,
           filter: 'none', display: showCircleToAsk || showDictation || showScheduled || showLoadout ? 'none' : undefined
         } as React.CSSProperties}
       >
-        {(musicBars||musicSatellite)&&<MusicDecorations edge={edge} width={collapsed.width} height={collapsed.height} scale={islandScale} bars={musicBars} satellite={musicSatellite} artwork={glanceArtwork} reduced={reduceMotion} onOpen={openMusic} label={appLang==='ar'?'فتح التحكم بالموسيقى':'Open music controls'}/>}
+        {(musicBars||musicSatellite)&&<MusicDecorations edge={edge} width={collapsed.width} height={collapsed.height} scaleX={islandScaleX} scaleY={islandScaleY} bars={musicBars} satellite={musicSatellite} artwork={glanceArtwork} reduced={reduceMotion} onOpen={openMusic} label={appLang==='ar'?'فتح التحكم بالموسيقى':'Open music controls'}/>}
         {/* Concave Ear Corners - ONLY for classic notch shape */}
         {showEars && (
           <>
             <svg
               data-island-ear="left"
               className="island-ear absolute right-full top-0 pointer-events-none"
-              style={{width:earSize,height:earSize,color:islandFill,fill:islandFill,stroke:'none'}}
+              style={{width:earWidth,height:earHeight,color:islandFill,fill:islandFill,stroke:'none'}}
               viewBox="0 0 12 12"
               fill={islandFill} stroke="none" aria-hidden="true"
             >
@@ -1458,7 +1461,7 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
             <svg
               data-island-ear="right"
               className="island-ear absolute left-full top-0 pointer-events-none"
-              style={{width:earSize,height:earSize,color:islandFill,fill:islandFill,stroke:'none'}}
+              style={{width:earWidth,height:earHeight,color:islandFill,fill:islandFill,stroke:'none'}}
               viewBox="0 0 12 12"
               fill={islandFill} stroke="none" aria-hidden="true"
             >
@@ -1480,10 +1483,10 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
             isLightMode ? 'bg-[#f4f4f7] text-[#1d1d1f] border-b border-black/10' : 'bg-black text-white'
           } flex flex-col overflow-hidden`}
           style={{
-            width: Math.min(shellWidth,maxSurfaceWidth),
+            width: Math.min(shellWidth,maxSurfaceWidth/islandScaleX),
             height: surfaceHeight,
             borderRadius:currentShape==='classic'?classicRadii:noticeCompact?20:undefined,
-            transform: `scale(${appSettings.islandScale || 1})`,
+            transform: `scale(${islandScaleX}, ${islandScaleY})`,
             transformOrigin: 'top left',
             opacity: 1,
             '--mohivx-accent': accentColor,
