@@ -1,32 +1,24 @@
-# MOHIVX Island 1.1.1
+# MOHIVX Island 1.1.2
 
 ## What's new
 
-- Reworked customization settings to show the Control Centre page layout directly, with drag reordering, right-click visibility, and a clear default page.
-- Added an independent settings direction: follow the app language, force left-to-right, or force right-to-left.
-- Removed duplicate tab controls and redundant shortcuts from customization.
-- Renamed the settings appearance choice to Original and Black.
-- Built the Android APK with version 1.1.1 and the same signing certificate as earlier MOHIVX Island APKs, so it can update an existing installation.
-- Windows installer updates include the matching latest.yml and blockmap files.
+- Fixed the media playback indicator: when Windows reports active output audio without track metadata, the island now reflects that audio is playing instead of showing a stale Play icon.
+- Kept the Windows media-key fallback for Play/Pause, Previous, and Next controls.
 
 ## الجديد
 
-- إعادة ترتيب إعدادات التخصيص لإظهار ترتيب صفحات مركز التحكم مباشرة، مع السحب لإعادة الترتيب، والنقر بزر الفأرة الأيمن للإخفاء، وتحديد الصفحة الافتراضية.
-- إضافة اتجاه مستقل للإعدادات: تلقائي حسب لغة التطبيق، أو من اليسار لليمين، أو من اليمين لليسار.
-- إزالة أدوات التبويبات المكررة والاختصارات الزائدة من صفحة التخصيص.
-- تسمية مظهري الإعدادات «الأصلية» و«أسود».
-- بناء APK بإصدار 1.1.1 وبشهادة التوقيع نفسها للنسخ السابقة، ليقبل التحديث فوق النسخة المثبتة.
-- يتضمن مثبّت Windows ملفات التحديث المطابقة latest.yml وblockmap.
+- إصلاح مؤشر تشغيل الوسائط: عندما يكتشف ويندوز صوتًا خارجًا من دون بيانات المقطع، تعرض الجزيرة حالة التشغيل ورمز الإيقاف المؤقت بدل رمز تشغيل قديم.
+- الإبقاء على مفاتيح الوسائط في ويندوز للتحكم بالتشغيل والإيقاف المؤقت والسابق والتالي.
 
 ## Downloads | ملفات التحميل
 
-- **Windows portable:** MOHIVX Island 1.1.1.exe
-- **Windows installer:** MOHIVX-Island-Setup-1.1.1.exe
-- **Android:** MOHIVX Island 1.1.1.apk
+- **Windows portable:** MOHIVX Island 1.1.2.exe
+- **Windows installer:** MOHIVX-Island-Setup-1.1.2.exe
+- **Android:** MOHIVX Island 1.1.2.apk
 
-- **نسخة Windows المحمولة:** MOHIVX Island 1.1.1.exe
-- **مثبّت Windows:** MOHIVX-Island-Setup-1.1.1.exe
-- **Android:** MOHIVX Island 1.1.1.apk
+- **نسخة Windows المحمولة:** MOHIVX Island 1.1.2.exe
+- **مثبّت Windows:** MOHIVX-Island-Setup-1.1.2.exe
+- **Android:** MOHIVX Island 1.1.2.apk
 
 ## License | الترخيص
 

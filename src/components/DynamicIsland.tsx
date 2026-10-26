@@ -515,6 +515,8 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
   const music=musicLayout(appSettings);
   const musicState=musicActivity(mediaInfo,outputAudio,music.enabled);
   const mediaGlance = musicState.visible;
+  // If Windows exposes audio output but no track metadata, use the live output meter for playback UI.
+  const mediaIsPlaying = mediaInfo.title ? mediaInfo.isPlaying : outputAudio;
   const glanceTitle=musicState.outputOnly?(appLang==='ar'?'صوت الجهاز':'Device audio'):mediaInfo.title;
   const glanceArtist=musicState.outputOnly?(appLang==='ar'?'صوت قيد التشغيل':'Sound is playing'):mediaInfo.artist;
   const glanceArtwork=musicState.outputOnly?undefined:mediaInfo.artwork;
@@ -1278,7 +1280,7 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
   };
 
   const handleMediaControl = (action: 'play-pause' | 'next' | 'prev') => {
-    if (action === 'play-pause') setMediaInfo((p) => ({ ...p, isPlaying: !p.isPlaying }));
+    if (action === 'play-pause') setMediaInfo((p) => p.title ? ({ ...p, isPlaying: !p.isPlaying }) : p);
     if (electron && electron.ipcRenderer) {
       electron.ipcRenderer.send('media-control', action);
     }
@@ -1567,9 +1569,9 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
             <div className="flex items-center gap-2 overflow-hidden pr-2">
               {mediaInfo.artwork&&<img className="w-8 h-8 rounded-lg object-cover shrink-0" src={mediaInfo.artwork} alt=""/>}
               <div className="flex items-end gap-0.5 h-4 w-4 shrink-0">
-                <span className={`w-1 bg-[color:var(--app-accent)] rounded-full ${mediaInfo.isPlaying ? 'animate-wave-1' : 'h-1.5'}`} />
-                <span className={`w-1 bg-[color:var(--app-accent)] rounded-full ${mediaInfo.isPlaying ? 'animate-wave-2' : 'h-3'}`} />
-                <span className={`w-1 bg-[color:var(--app-accent)] rounded-full ${mediaInfo.isPlaying ? 'animate-wave-3' : 'h-2'}`} />
+                <span className={`w-1 bg-[color:var(--app-accent)] rounded-full ${mediaIsPlaying ? 'animate-wave-1' : 'h-1.5'}`} />
+                <span className={`w-1 bg-[color:var(--app-accent)] rounded-full ${mediaIsPlaying ? 'animate-wave-2' : 'h-3'}`} />
+                <span className={`w-1 bg-[color:var(--app-accent)] rounded-full ${mediaIsPlaying ? 'animate-wave-3' : 'h-2'}`} />
               </div>
               <div className="flex flex-col truncate" dir="auto">
                 <span className="text-xs font-bold truncate max-w-[190px]" dir="auto">{mediaInfo.title || (appLang === 'ar' ? 'صوت قيد التشغيل' : 'Playing Audio')}</span>
@@ -1596,9 +1598,9 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
                   handleMediaControl('play-pause');
                 }}
                 className="w-7 h-7 rounded-full bg-[color:var(--app-accent)] text-black flex items-center justify-center hover:scale-105 transition-transform cursor-pointer"
-                title={mediaInfo.isPlaying ? (appLang === 'ar' ? 'إيقاف مؤقت' : 'Pause') : (appLang === 'ar' ? 'تشغيل' : 'Play')}
+                title={mediaIsPlaying ? (appLang === 'ar' ? 'إيقاف مؤقت' : 'Pause') : (appLang === 'ar' ? 'تشغيل' : 'Play')}
               >
-                {mediaInfo.isPlaying ? <Pause className="w-3.5 h-3.5 fill-black" /> : <Play className="w-3.5 h-3.5 fill-black ml-0.5" />}
+                {mediaIsPlaying ? <Pause className="w-3.5 h-3.5 fill-black" /> : <Play className="w-3.5 h-3.5 fill-black ml-0.5" />}
               </button>
               <button
                 onClick={(e) => {
@@ -2160,9 +2162,9 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
                           <Volume2 className="w-3.5 h-3.5 text-zinc-400" />
                           <span className="truncate max-w-[280px]">{selectedAudioDevice}</span>
                         </div>
-                        <span className={`font-mono text-[10px] ${mediaInfo.isPlaying ? 'text-emerald-400 font-bold' : 'text-zinc-400'}`}>
+                        <span className={`font-mono text-[10px] ${mediaIsPlaying ? 'text-emerald-400 font-bold' : 'text-zinc-400'}`}>
                           {mediaInfo.title
-                            ? mediaInfo.isPlaying ? (appLang === 'ar' ? 'يعمل الآن' : 'Playing') : (appLang === 'ar' ? 'متوقف مؤقتاً' : 'Paused')
+                            ? mediaIsPlaying ? (appLang === 'ar' ? 'يعمل الآن' : 'Playing') : (appLang === 'ar' ? 'متوقف مؤقتاً' : 'Paused')
                             : (appLang === 'ar' ? 'صوت الجهاز يعمل' : 'Device audio is active')}
                         </span>
                       </div>
@@ -2193,9 +2195,9 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
                           <button
                             onClick={() => handleMediaControl('play-pause')}
                             className="w-10 h-10 rounded-full bg-[color:var(--app-accent)] hover:bg-white text-black flex items-center justify-center shadow-md transition-all cursor-pointer"
-                            title={mediaInfo.isPlaying ? (appLang === 'ar' ? 'إيقاف مؤقت' : 'Pause') : (appLang === 'ar' ? 'تشغيل' : 'Play')}
+                            title={mediaIsPlaying ? (appLang === 'ar' ? 'إيقاف مؤقت' : 'Pause') : (appLang === 'ar' ? 'تشغيل' : 'Play')}
                           >
-                            {mediaInfo.isPlaying ? (
+                            {mediaIsPlaying ? (
                               <Pause className="w-4 h-4 fill-black" />
                             ) : (
                               <Play className="w-4 h-4 fill-black ml-0.5" />
@@ -2234,7 +2236,7 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
                             style={{
                               width: mediaInfo.duration > 0
                                 ? `${Math.max(0, Math.min(100, (mediaInfo.position / mediaInfo.duration) * 100))}%`
-                                : mediaInfo.isPlaying ? '50%' : '15%'
+                                : mediaIsPlaying ? '50%' : '15%'
                             }}
                           />
                         </div>
@@ -2243,7 +2245,7 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
                           <span className="text-zinc-500">
                             {mediaInfo.duration > 0
                               ? formatTrackTime(mediaInfo.duration)
-                              : (mediaInfo.isPlaying ? (appLang === 'ar' ? 'مباشر' : 'LIVE') : '--:--')}
+                              : (mediaIsPlaying ? (appLang === 'ar' ? 'مباشر' : 'LIVE') : '--:--')}
                           </span>
                         </div>
                       </div>}
