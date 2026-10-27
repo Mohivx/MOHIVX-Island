@@ -3,6 +3,11 @@ package com.mohivx.island.companion
 import android.content.Intent
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import android.content.ComponentName
+import android.media.session.MediaController
+import android.media.session.MediaSessionManager
+import android.media.MediaMetadata
+import android.media.session.PlaybackState
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -14,6 +19,8 @@ class PhoneNotifications:NotificationListenerService(){
   private var revision=0L
   fun refresh(){listener?.rescan()}
   fun reply(notificationId:String,text:String):JSONObject = listener?.replyCurrent(notificationId,text) ?: throw IllegalStateException("Phone notification access is unavailable.")
+  fun mediaStatus():JSONObject=listener?.activeMedia()?:JSONObject().put("available",false)
+  fun controlMedia(command:JSONObject):JSONObject=listener?.controlMediaSession(command)?:throw IllegalStateException("Phone notification access is unavailable.")
   @Synchronized fun snapshot():JSONArray=JSONArray(entries.values.toList().asReversed().take(80))
   @Synchronized fun packet():Pair<Long,JSONArray> = Pair(revision,snapshot())
   @Synchronized private fun put(key:String,value:JSONObject){entries.remove(key);entries[key]=value;while(entries.size>80)entries.remove(entries.keys.first());revision++}
@@ -21,6 +28,27 @@ class PhoneNotifications:NotificationListenerService(){
   @Synchronized fun clear(){entries.clear();revision++}
  }
  private fun rescan(){clear();try{activeNotifications?.forEach{onNotificationPosted(it)}}catch(_:Exception){}}
+ private fun mediaControllers():List<MediaController> = (getSystemService(MEDIA_SESSION_SERVICE) as MediaSessionManager).getActiveSessions(ComponentName(this,PhoneNotifications::class.java))
+ private fun activeMedia():JSONObject {
+  return try {
+   val sessions=mediaControllers();val controller=sessions.firstOrNull{it.playbackState?.state==PlaybackState.STATE_PLAYING}?:sessions.firstOrNull{it.metadata!=null}?:return JSONObject().put("available",false)
+   val metadata=controller.metadata;val state=controller.playbackState;val duration=(metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION)?:0L).coerceIn(0,86400000L)
+   var position=(state?.position?:0L).coerceIn(0,duration)
+   if(state?.state==PlaybackState.STATE_PLAYING&&state.lastPositionUpdateTime>0){position=(position+(android.os.SystemClock.elapsedRealtime()-state.lastPositionUpdateTime).coerceAtLeast(0L)).coerceAtMost(duration)}
+   val stateName=when(state?.state){PlaybackState.STATE_PLAYING->"playing";PlaybackState.STATE_PAUSED->"paused";PlaybackState.STATE_BUFFERING,PlaybackState.STATE_CONNECTING->"buffering";PlaybackState.STATE_STOPPED->"stopped";else->"none"}
+   val app=try{packageManager.getApplicationLabel(packageManager.getApplicationInfo(controller.packageName,0)).toString()}catch(_:Exception){controller.packageName}
+   val actions=state?.actions?:0L
+   JSONObject().put("available",metadata!=null).put("packageName",controller.packageName).put("app",app).put("title",metadata?.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty()).put("artist",metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST).orEmpty()).put("album",metadata?.getString(MediaMetadata.METADATA_KEY_ALBUM).orEmpty()).put("duration",duration).put("position",position).put("state",stateName).put("canPlay",(actions and PlaybackState.ACTION_PLAY)!=0L||(actions and PlaybackState.ACTION_PLAY_PAUSE)!=0L).put("canPause",(actions and PlaybackState.ACTION_PAUSE)!=0L||(actions and PlaybackState.ACTION_PLAY_PAUSE)!=0L).put("canPrevious",(actions and PlaybackState.ACTION_SKIP_TO_PREVIOUS)!=0L).put("canNext",(actions and PlaybackState.ACTION_SKIP_TO_NEXT)!=0L).put("canSeek",(actions and PlaybackState.ACTION_SEEK_TO)!=0L)
+  }catch(_:Exception){JSONObject().put("available",false)}
+ }
+ private fun controlMediaSession(command:JSONObject):JSONObject {
+  check(connected){"Allow notification access in the phone app first."}
+  val action=command.getString("action");val packageName=command.optString("packageName")
+  val controller=mediaControllers().firstOrNull{it.packageName==packageName&&it.metadata!=null}?:throw IllegalStateException("No active media player was found on the phone.")
+  val controls=controller.transportControls
+  when(action){"play"->controls.play();"pause"->controls.pause();"previous"->controls.skipToPrevious();"next"->controls.skipToNext();"seek"->controls.seekTo(command.getLong("position"));else->throw IllegalArgumentException("Unsupported media action.")}
+  return JSONObject().put("accepted",true).put("packageName",controller.packageName)
+ }
  override fun onListenerConnected(){connected=true;listener=this;rescan()}
  override fun onListenerDisconnected(){connected=false;if(listener===this)listener=null;clear()}
  override fun onNotificationPosted(sbn:StatusBarNotification){
