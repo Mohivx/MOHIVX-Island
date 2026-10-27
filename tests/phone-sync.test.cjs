@@ -1,5 +1,5 @@
 const test=require('node:test'),assert=require('node:assert/strict');
-const {PhoneSync}=require('../electron/services/phoneSync.cjs');
+const {PhoneSync,validatePhoneFileCommand}=require('../electron/services/phoneSync.cjs');
 const {normalizeMeter}=require('../electron/services/audioMeter.cjs');
 test('phone data is opt-in, bounded, and commands preserve correlation across retries',async()=>{
  let now=100000;const service=new PhoneSync({now:()=>now});const phone={id:'fixture',capabilities:[]};
@@ -13,6 +13,18 @@ test('phone data is opt-in, bounded, and commands preserve correlation across re
  now+=16000;phone.capabilities=['phoneData'];await assert.rejects(service.request(phone,{type:'files.list'}),/background sync/);service.clear();
 });
 test('disconnect rejects outstanding phone operations and unknown commands never queue',async()=>{const s=new PhoneSync(),d={id:'p',capabilities:['phoneMic']};s.exchange(d,{});assert.throws(()=>s.request(d,{type:'shell.exec'}),/Unknown/);const p=s.request(d,{type:'capture.stop',kind:'mic'});s.revoke('p');await assert.rejects(p,/disconnected/);assert.equal(s.snapshot('p').at,0);});
+test('PC-to-phone file writes require a separate opt-in, bounded safe chunks, and acknowledged completion',async()=>{
+ const s=new PhoneSync(),d={id:'file-write-phone',capabilities:['phoneData']};s.exchange(d,{status:{folderWritable:true}});
+ await assert.rejects(s.request(d,{type:'files.write'}),/permission/);
+ assert.throws(()=>validatePhoneFileCommand({type:'files.write',transferId:'12345678-1234-1234-1234-123456789012',name:'../outside.txt',parent:'',size:1,offset:0,data:'eA==',eof:true}),/valid file name/);
+ assert.throws(()=>validatePhoneFileCommand({type:'files.write',transferId:'12345678-1234-1234-1234-123456789012',name:'ok.txt',parent:'',size:1,offset:0,data:'?',eof:true}),/Invalid phone file chunk/);
+ d.capabilities=['phoneFilesWrite'];const transferId='12345678-1234-1234-1234-123456789012';
+ const pending=s.request(d,{type:'files.write',transferId,name:'ok.txt',parent:'',size:5,offset:0,data:Buffer.from('hello').toString('base64'),eof:true});
+ const packet=s.exchange(d,{});assert.equal(packet.commands[0].type,'files.write');assert.equal(packet.commands[0].name,'ok.txt');
+ s.exchange(d,{results:[{id:packet.commands[0].id,value:{offset:0,nextOffset:5,complete:true,name:'ok.txt'}}]});
+ assert.deepEqual(await pending,{offset:0,nextOffset:5,complete:true,name:'ok.txt'});
+ const revoked=s.request(d,{type:'files.abort',transferId});d.capabilities=[];s.exchange(d,{});await assert.rejects(revoked,/revoked/);
+});
 test('phone app listing and launch use separate per-device permissions',async()=>{const s=new PhoneSync(),d={id:'apps',capabilities:['phoneData']};s.exchange(d,{});const listing=s.request(d,{type:'apps.list'});let commands=s.exchange(d,{}).commands;assert.equal(commands[0].type,'apps.list');s.exchange(d,{results:[{id:commands[0].id,value:{items:[{packageName:'com.example.app',name:'Example'}]}}]});assert.deepEqual(await listing,{items:[{packageName:'com.example.app',name:'Example'}]});await assert.rejects(s.request(d,{type:'apps.launch',packageName:'com.example.app'}),/permission/);d.capabilities=['phoneControl'];const invalid=s.request(d,{type:'apps.launch',packageName:'../private'});await assert.rejects(invalid,/installed phone app/);const opening=s.request(d,{type:'apps.launch',packageName:'com.example.app'});commands=s.exchange(d,{}).commands;assert.equal(commands[0].type,'apps.launch');assert.equal(commands[0].packageName,'com.example.app');s.exchange(d,{results:[{id:commands[0].id,value:{needsTap:true}}]});assert.deepEqual(await opening,{needsTap:true});});
 test('notification replies require a current reply-capable notification and keep bounded text correlated',async()=>{const s=new PhoneSync(),d={id:'reply-phone',capabilities:['phoneData']};s.exchange(d,{notifications:[{id:'chat-1',app:'Chat',title:'Hello',text:'Hi',replyAvailable:true},{id:'plain-1',title:'Alert',replyAvailable:false}]});assert.equal(s.snapshot(d.id).notifications[0].replyAvailable,true);await assert.rejects(s.request(d,{type:'notifications.reply',notificationId:'missing',text:'Hi'}),/no longer supports replies/);await assert.rejects(s.request(d,{type:'notifications.reply',notificationId:'plain-1',text:'Hi'}),/no longer supports replies/);await assert.rejects(s.request(d,{type:'notifications.reply',notificationId:'chat-1',text:'  '}),/short reply/);await assert.rejects(s.request(d,{type:'notifications.reply',notificationId:'chat-1',text:'x'.repeat(1001)}),/short reply/);const pending=s.request(d,{type:'notifications.reply',notificationId:'chat-1',text:'  Thanks  '});const packet=s.exchange(d,{});assert.equal(packet.commands[0].type,'notifications.reply');assert.equal(packet.commands[0].notificationId,'chat-1');assert.equal(packet.commands[0].text,'Thanks');s.exchange(d,{results:[{id:packet.commands[0].id,value:{submitted:true}}]});assert.deepEqual(await pending,{submitted:true});});
 test('SMS history and sending require separate phoneMessages permission, validate inputs, sanitize pages, and reject on revocation',async()=>{

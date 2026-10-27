@@ -1952,6 +1952,30 @@ ipcMain.handle('phone-file-save',async(event,{device,id,name,size})=>{
   const temporary=result.filePath+'.mohivx-'+randomUUID()+'.part';let fd;
   try{fd=fs.openSync(temporary,'wx');let offset=0;while(offset<size){if(!androidGateway.devices.includes(d)||!d.capabilities.includes('phoneData'))throw Error('Permission revoked.');const r=await phoneSync.request(d,{type:'files.read',id,offset});const data=Buffer.from(String(r.data||''),'base64');if(r.offset!==offset||data.length===0||data.length>98304||offset+data.length>size)throw Error('Phone file changed. Refresh its folder.');fs.writeSync(fd,data);offset+=data.length;if(r.eof&&offset!==size)throw Error('Phone file changed. Refresh its folder.');}fs.closeSync(fd);fd=undefined;fs.renameSync(temporary,result.filePath);return {success:true};}finally{if(fd!==undefined)fs.closeSync(fd);try{fs.unlinkSync(temporary);}catch{}}
 });
+ipcMain.handle('phone-file-upload',async(event,{device,parent=''})=>{
+  const win=BrowserWindow.fromWebContents(event.sender);if(!win||win.isDestroyed()||(win!==mainWindow&&win!==hubWindow))throw Error('Window action unavailable.');
+  const d=androidGateway.devices.find(item=>item.id===device);if(!d?.capabilities.includes('phoneFilesWrite'))throw Error('Enable Send files to phone in connection permissions.');
+  const phone=phoneSync.snapshot(device);if(!phone.status.folderWritable)throw Error('Choose a writable shared folder in the Android Phone app first.');
+  const picked=await dialog.showOpenDialog(win,{title:currentAppSettings.appLang==='ar'?'اختر ملفات لإرسالها إلى الهاتف':'Choose files to send to your phone',defaultPath:app.getPath('downloads'),properties:['openFile','multiSelections']});
+  if(picked.canceled||!picked.filePaths.length)return {success:true,canceled:true};
+  if(picked.filePaths.length>20)throw Error('Choose up to 20 files at a time.');
+  const CHUNK=48*1024,MAX=2147483648,transfers=[];
+  const progress=(file,sent,total)=>{try{win.webContents.send('phone-file-upload-progress',{device,file,sent,total});}catch{}};
+  for(const filePath of picked.filePaths){
+   const name=path.basename(filePath),transferId=randomUUID(),fd=fs.openSync(filePath,'r'),initial=fs.fstatSync(fd),size=initial.size;if(!Number.isSafeInteger(size)||size<0||size>MAX){fs.closeSync(fd);throw Error('Choose files up to 2 GB.');}let offset=0,complete=false;
+   try{
+    while(offset<size||(!size&&offset===0)){
+     if(!androidGateway.devices.includes(d)||!d.capabilities.includes('phoneFilesWrite'))throw Error('Phone file permission was revoked.');
+     const length=Math.min(CHUNK,size-offset),buffer=Buffer.alloc(length);if(length){const read=fs.readSync(fd,buffer,0,length,offset);if(read!==length)throw Error('Source file changed while sending.');}const current=fs.fstatSync(fd);if(current.size!==initial.size||current.mtimeMs!==initial.mtimeMs)throw Error('Source file changed while sending.');const eof=offset+length===size;
+     const result=await phoneSync.request(d,{type:'files.write',transferId,name,parent,size,offset,data:buffer.toString('base64'),eof});
+     if(result.offset!==offset||result.nextOffset!==offset+length)throw Error('The phone did not confirm the file chunk.');
+     offset=result.nextOffset;complete=result.complete;progress(name,offset,size);if(eof)break;
+    }
+    if(!complete)throw Error('The phone did not finish saving the file.');transfers.push({name,size});
+   }catch(error){try{await phoneSync.request(d,{type:'files.abort',transferId});}catch{}throw error;}finally{fs.closeSync(fd);}
+  }
+  return {success:true,files:transfers};
+});
 ipcMain.handle('phone-media-stop',(_event,{device,kind})=>phoneMedia.clear(device,kind));
 ipcMain.handle('phone-audio-devices',()=>phoneNative.request('audio-devices'));
 ipcMain.handle('phone-mic-status',async()=>({...(await micAutoSetup.status()),route:micRouter.snapshot(),automatic:currentAppSettings.phoneMicAuto!==false}));
