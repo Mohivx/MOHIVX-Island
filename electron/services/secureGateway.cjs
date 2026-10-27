@@ -9,7 +9,7 @@ const {seal,open}=require('./secureEnvelope.cjs');
 const {validateInput}=require('./phoneBridge.cjs');
 const {localAddress,directAddresses}=require('./directAddress.cjs');
 const SECURE_REQUEST=Symbol('authenticated envelope');
-const CAPS = ['telemetry', 'volume', 'wallpaper', 'apps', 'ai', 'agents', 'agentApprovals', 'power','remoteInput','desktopView','phoneScreen','phoneCamera','phoneMic','phoneData','phoneControl'];
+const CAPS = ['telemetry', 'volume', 'wallpaper', 'apps', 'ai', 'agents', 'agentApprovals', 'power','remoteInput','desktopView','phoneScreen','phoneCamera','phoneMic','phoneData','phoneMessages','phoneControl'];
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 class AndroidGatewayService {
   constructor(port = 9120, appDataDir, log = () => {}, options = {}) {
