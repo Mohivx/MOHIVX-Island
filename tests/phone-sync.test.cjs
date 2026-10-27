@@ -25,6 +25,19 @@ test('PC-to-phone file writes require a separate opt-in, bounded safe chunks, an
  assert.deepEqual(await pending,{offset:0,nextOffset:5,complete:true,name:'ok.txt'});
  const revoked=s.request(d,{type:'files.abort',transferId});d.capabilities=[];s.exchange(d,{});await assert.rejects(revoked,/revoked/);
 });
+test('phone folder creation and rename require write permission, validate names and opaque IDs, and sanitize acknowledgements',async()=>{
+ const s=new PhoneSync(),d={id:'phone-folders',capabilities:['phoneData']};s.exchange(d,{});
+ await assert.rejects(s.request(d,{type:'files.mkdir',parent:'',name:'Documents'}),/permission/);
+ d.capabilities=['phoneFilesWrite'];
+ for(const name of ['.','..','../outside','folder/escape','trailing.','bad:name'])await assert.rejects(s.request(d,{type:'files.mkdir',parent:'',name}),/valid name/);
+ await assert.rejects(s.request(d,{type:'files.mkdir',parent:'bad',name:'Docs'}),/valid phone folder/);
+ await assert.rejects(s.request(d,{type:'files.rename',itemId:'../outside',name:'Docs'}),/file or folder to rename/);
+ const mkdir=s.request(d,{type:'files.mkdir',parent:'',name:'Travel'});let command=s.exchange(d,{}).commands[0];assert.equal(command.type,'files.mkdir');assert.equal(command.name,'Travel');
+ s.exchange(d,{results:[{id:command.id,value:{created:true,name:'Travel',directory:true,unexpected:'discard'}}]});assert.deepEqual(await mkdir,{created:true,name:'Travel',directory:true});
+ const newId='a'.repeat(64),rename=s.request(d,{type:'files.rename',itemId:newId,name:'Trips'});command=s.exchange(d,{}).commands[0];assert.equal(command.type,'files.rename');assert.equal(command.itemId,newId);
+ s.exchange(d,{results:[{id:command.id,value:{renamed:true,id:'b'.repeat(64),name:'Trips',directory:true,unexpected:'discard'}}]});assert.deepEqual(await rename,{renamed:true,id:'b'.repeat(64),name:'Trips',directory:true});
+ const revoked=s.request(d,{type:'files.mkdir',parent:'',name:'Later'});d.capabilities=[];s.exchange(d,{});await assert.rejects(revoked,/revoked/);
+});
 test('phone app listing and launch use separate per-device permissions',async()=>{const s=new PhoneSync(),d={id:'apps',capabilities:['phoneData']};s.exchange(d,{});const listing=s.request(d,{type:'apps.list'});let commands=s.exchange(d,{}).commands;assert.equal(commands[0].type,'apps.list');s.exchange(d,{results:[{id:commands[0].id,value:{items:[{packageName:'com.example.app',name:'Example'}]}}]});assert.deepEqual(await listing,{items:[{packageName:'com.example.app',name:'Example'}]});await assert.rejects(s.request(d,{type:'apps.launch',packageName:'com.example.app'}),/permission/);d.capabilities=['phoneControl'];const invalid=s.request(d,{type:'apps.launch',packageName:'../private'});await assert.rejects(invalid,/installed phone app/);const opening=s.request(d,{type:'apps.launch',packageName:'com.example.app'});commands=s.exchange(d,{}).commands;assert.equal(commands[0].type,'apps.launch');assert.equal(commands[0].packageName,'com.example.app');s.exchange(d,{results:[{id:commands[0].id,value:{needsTap:true}}]});assert.deepEqual(await opening,{needsTap:true});});
 test('phone media sessions are independently permission-gated, sanitized, and controllable',async()=>{
  const {mediaStatus}=require('../electron/services/phoneSync.cjs'),s=new PhoneSync(),d={id:'media-phone',capabilities:['phoneData']};

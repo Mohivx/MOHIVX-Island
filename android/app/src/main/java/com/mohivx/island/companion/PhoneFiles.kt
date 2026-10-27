@@ -21,7 +21,7 @@ class PhoneFiles(private val context:Context){
  private fun persistedTreePermission(write:Boolean):Boolean {val selected=selectedFolder();if(selected.isEmpty())return false;return context.contentResolver.persistedUriPermissions.any{it.uri.toString()==selected&&it.isReadPermission&&(!write||it.isWritePermission)}}
  fun folderAllowed()=allFilesAllowed()||persistedTreePermission(false)
  fun folderWriteAllowed()=allFilesAllowed()||persistedTreePermission(true)
- fun execute(command:JSONObject):JSONObject=when(command.getString("type")){"photos.list"->photos(command.optInt("offset"));"files.list"->list(command.optString("parent"),command.optInt("offset"));"files.read"->read(command);"files.write"->write(command);"files.abort"->abort(command.optString("transferId"));else->throw IllegalArgumentException("Unknown file request.")}
+ fun execute(command:JSONObject):JSONObject=when(command.getString("type")){"photos.list"->photos(command.optInt("offset"));"files.list"->list(command.optString("parent"),command.optInt("offset"));"files.read"->read(command);"files.write"->write(command);"files.abort"->abort(command.optString("transferId"));"files.mkdir"->mkdir(command);"files.rename"->rename(command);else->throw IllegalArgumentException("Unknown file request.")}
  private fun photos(offset:Int):JSONObject {
   check(photosAllowed()){"Allow photos in the phone app first."};require(offset in 0..100000)
   val items=JSONArray();var more=false
@@ -73,6 +73,50 @@ class PhoneFiles(private val context:Context){
   val upload=uploads[transfer]?:throw IllegalArgumentException("File transfer expired. Start again.")
   require(upload.name==name&&upload.size==size&&upload.offset==offset){"File chunks arrived out of order."}
   try{if(bytes.isNotEmpty())upload.output.write(bytes);upload.offset+=bytes.size;if(eof){upload.output.flush();upload.output.close();val finalUri=finishUpload(upload);uploads.remove(transfer);return JSONObject().put("offset",offset).put("nextOffset",upload.offset).put("complete",true).put("name",queryName(finalUri)?:name)};return JSONObject().put("offset",offset).put("nextOffset",upload.offset).put("complete",false)}catch(error:Exception){uploads.remove(transfer);try{upload.output.close()}catch(_:Exception){};deleteDocument(upload.uri);throw error}
+ }
+ private fun mkdir(command:JSONObject):JSONObject {
+  check(folderWriteAllowed()){"Choose a shared folder with write access in the phone app first."}
+  val name=validName(command.getString("name"));val parent=command.optString("parent");val rootKey=if(allFilesAllowed())"ALL" else selectedFolder()
+  check(rootKey.isNotEmpty()){"Choose a shared folder in the phone app first."}
+  if(rootKey!=tree){tree=rootKey;entries.clear();uploads.values.forEach{try{it.output.close()}catch(_:Exception){};deleteDocument(it.uri)};uploads.clear()}
+  if(allFilesAllowed()){
+   val root=android.os.Environment.getExternalStorageDirectory().canonicalFile
+   val folder=if(parent.isEmpty())root else entries[parent]?.takeIf{it.directory&&it.uri.scheme=="file"}?.uri?.path?.let{java.io.File(it).canonicalFile}?:throw IllegalArgumentException("Choose the shared folder again.")
+   check(allowedShared(folder)&&folder.isDirectory&&folder.canWrite()){"Folder unavailable."}
+   val target=java.io.File(folder,name);check(allowedShared(target)&&!target.exists()&&target.mkdir()){"Could not create the folder."}
+  }else{
+   check(persistedTreePermission(true)){"Choose a shared folder with write access in the phone app first."}
+   val root=Uri.parse(selectedFolder());val parentUri=if(parent.isEmpty())Docs.buildDocumentUriUsingTree(root,Docs.getTreeDocumentId(root))else entries[parent]?.takeIf{it.directory}?.uri?:throw IllegalArgumentException("Choose the shared folder again.")
+   check(Docs.createDocument(context.contentResolver,parentUri,Docs.Document.MIME_TYPE_DIR,name)!=null){"Could not create the folder."}
+  }
+  return JSONObject().put("created",true).put("name",name).put("directory",true)
+ }
+ private fun rename(command:JSONObject):JSONObject {
+  check(folderWriteAllowed()){"Choose a shared folder with write access in the phone app first."}
+  val id=command.getString("itemId");val name=validName(command.getString("name"));val entry=entries[id]?:throw IllegalArgumentException("Open the folder again and choose the item to rename.")
+  val rootKey=if(allFilesAllowed())"ALL" else selectedFolder();check(rootKey.isNotEmpty()){"Choose a shared folder in the phone app first."}
+  if(rootKey!=tree){tree=rootKey;entries.clear();throw IllegalArgumentException("Open the folder again and choose the item to rename.")}
+  val renamedUri:Uri
+  if(entry.uri.scheme=="file"){
+   check(allFilesAllowed()){"Shared storage access was disabled."}
+   val source=java.io.File(entry.uri.path?:throw IllegalArgumentException("Open the folder again.")).canonicalFile
+   check(allowedShared(source)&&source.exists()){"File or folder unavailable."}
+   val target=java.io.File(source.parentFile?:throw IllegalArgumentException("Could not rename the item."),name).canonicalFile
+   if(target.path!=source.path)check(allowedShared(target)&&!target.exists()&&source.renameTo(target)){"Could not rename the item."}
+   renamedUri=Uri.fromFile(target)
+  }else{
+   check(persistedTreePermission(true)){"Choose a shared folder with write access in the phone app first."}
+   renamedUri=Docs.renameDocument(context.contentResolver,entry.uri,name)?:throw IllegalStateException("The selected folder could not rename this item.")
+  }
+  entries.clear();val renamedId=remember(renamedUri,entry.directory,name)
+  return JSONObject().put("renamed",true).put("id",renamedId).put("name",name).put("directory",entry.directory)
+ }
+ private fun validName(value:String):String {
+  val name=value.trim();require(name.isNotEmpty()&&name.length<=160&&name!="."&&name!=".."&&!name.any{it=='/'||it=='\\'||it=='<'||it=='>'||it==':'||it=='"'||it=='|'||it=='?'||it=='*'||it.code<32}&&!name.endsWith('.')&&!name.endsWith(' ')){"Choose a valid name for the phone item."};return name
+ }
+ private fun allowedShared(file:java.io.File):Boolean {
+  val root=android.os.Environment.getExternalStorageDirectory().canonicalFile;val path=file.canonicalPath
+  return (path==root.path||path.startsWith(root.path+java.io.File.separator))&&!path.startsWith(root.path+"/Android/data")&&!path.startsWith(root.path+"/Android/obb")
  }
  private fun createTreeUpload(name:String,parent:String):Uri {
   check(persistedTreePermission(true)){"Choose a shared folder with write access in the phone app first."};val root=Uri.parse(selectedFolder());if(root.toString()!=tree){tree=root.toString();entries.clear()};val parentUri=if(parent.isEmpty())Docs.buildDocumentUriUsingTree(root,Docs.getTreeDocumentId(root))else entries[parent]?.takeIf{it.directory}?.uri?:throw IllegalArgumentException("Choose the shared folder again.")
