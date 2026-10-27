@@ -40,7 +40,7 @@ class PhoneSyncService:Service(){
   notifyAgents(response.optJSONArray("requests")?:JSONArray());return (response.optJSONArray("commands")?.length()?:0)>0
  }catch(e:Exception){lastError=e.message?:"Connection unavailable";return false}}
  private fun execute(c:JSONObject):JSONObject {
-  val type=c.getString("type");if(type=="apps.list")return apps.list();if(type=="apps.launch")return apps.launch(c.getString("packageName"));if(type.startsWith("files.")||type=="photos.list")return files.execute(c)
+  val type=c.getString("type");if(type=="apps.list")return apps.list();if(type=="apps.launch")return apps.launch(c.getString("packageName"));if(type=="notifications.reply")return PhoneNotifications.reply(c.optString("notificationId"),c.optString("text"));if(type.startsWith("files.")||type=="photos.list")return files.execute(c)
   if(type=="input")return PhoneControlService.execute(c.getJSONObject("input"))
   val kind=c.optString("kind");require(kind in listOf("camera","mic","screen"))
   if(type=="capture.stop"){if(PhoneCaptureService.active.contains(kind))startService(Intent(this,PhoneCaptureService::class.java).setAction(PhoneCaptureService.STOP).putExtra("kind",kind));manager().cancel(3200+kind.hashCode());return JSONObject().put("stopped",true)}

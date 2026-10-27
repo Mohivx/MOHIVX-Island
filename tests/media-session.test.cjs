@@ -2,7 +2,7 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const {parseMedia,createMediaQuery}=require('../electron/services/mediaSession.cjs');
 test('media JSON preserves Arabic, delimiters and local artwork, rejects unsafe sources',()=>{
   const value={title:'أغنية | title',artist:'فنان',isPlaying:true,position:12,duration:30,artwork:'data:image/png;base64,YQ==',sourceApp:'player'};
-  assert.deepEqual(parseMedia(JSON.stringify(value)),value);
+  assert.deepEqual(parseMedia(JSON.stringify(value)),{...value,playbackStatus:'Playing'});
   assert.equal(parseMedia(JSON.stringify({...value,artwork:'https://tracking.invalid/cover'})).artwork,'');
   assert.equal(parseMedia('NO_MEDIA').title,'');
   assert.equal(parseMedia(JSON.stringify({...value,position:-3,duration:'bad'})).position,0);
