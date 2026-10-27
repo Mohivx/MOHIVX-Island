@@ -38,7 +38,7 @@ class PhoneSyncService:Service(){
   if(includeNotifications)body.put("notifications",notifications.second)
   if(clipboard!=null)body.put("clipboard",clipboard)
   val response=client.request("/api/phone-sync",body);if(!active)return false;lastSyncAt=System.currentTimeMillis();lastError="";if(includeProfile)lastProfileAt=lastSyncAt;if(includeNotifications){lastNotificationRevision=notifications.first;lastNotificationAt=lastSyncAt};if(clipboard!=null)PhoneClipboard.markSynced(clipboard.optString("hash"));response.optJSONArray("ack")?.let{a->for(i in 0 until a.length())results.remove(a.optString(i))}
-  response.optJSONArray("commands")?.let{a->for(i in 0 until a.length()){val c=a.getJSONObject(i);val id=c.getString("id");if(results.containsKey(id)||c.optLong("expires")<response.optLong("serverAt",System.currentTimeMillis()))continue;val r=JSONObject().put("id",id);try{r.put("value",execute(c))}catch(e:Exception){r.put("error",e.message?:"Phone request failed.")};results[id]=r;while(results.size>12)results.remove(results.keys.first())}}
+  response.optJSONArray("commands")?.let{a->for(i in 0 until a.length()){val c=a.getJSONObject(i);val id=c.getString("id");if(results.containsKey(id)||c.optLong("expires")<response.optLong("serverAt",System.currentTimeMillis()))continue;val r=JSONObject().put("id",id);try{r.put("value",execute(c))}catch(e:Exception){r.put("error",e.message?:"Phone request failed.")};results[id]=r;while(results.size>24)results.remove(results.keys.first())}}
   notifyAgents(response.optJSONArray("requests")?:JSONArray());return (response.optJSONArray("commands")?.length()?:0)>0
  }catch(e:Exception){lastError=e.message?:"Connection unavailable";return false}}
  private fun execute(c:JSONObject):JSONObject {

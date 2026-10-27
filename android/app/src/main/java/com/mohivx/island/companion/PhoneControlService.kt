@@ -50,7 +50,7 @@ class PhoneControlService: AccessibilityService() {
     "backspace"->{edit(null);done(null)}
     "delete"->{edit(null,forward=true);done(null)}
     "enter"->{val node=rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: throw IllegalStateException("Tap a text field first.");try{require(!node.isPassword);require(android.os.Build.VERSION.SDK_INT>=30&&node.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)){"Enter is unavailable for this field."}}finally{node.recycle()};done(null)}
-    "selectAll","copy","cut","paste"->{val node=rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: throw IllegalStateException("Tap a text field first.");try{require(node.isEditable&&!node.isPassword){"This field cannot be edited remotely."};val ok=when(key){"selectAll"->node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION,Bundle().apply{putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT,0);putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT,node.text?.length?:0)});"copy"->node.performAction(AccessibilityNodeInfo.ACTION_COPY);"cut"->node.performAction(AccessibilityNodeInfo.ACTION_CUT);else->node.performAction(AccessibilityNodeInfo.ACTION_PASTE)};require(ok){"This text action is unavailable for this field."}}finally{node.recycle()};done(null)}
+    "selectAll","copy","cut","paste"->{val node=rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: throw IllegalStateException("Tap a text field first.");try{require(node.isEditable&&!node.isPassword){"This field cannot be edited remotely."};val currentText=if(android.os.Build.VERSION.SDK_INT>=26&&node.isShowingHintText)"" else node.text?.toString().orEmpty();val ok=when(key){"selectAll"->node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION,Bundle().apply{putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT,0);putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT,currentText.length)});"copy"->node.performAction(AccessibilityNodeInfo.ACTION_COPY);"cut"->node.performAction(AccessibilityNodeInfo.ACTION_CUT);else->node.performAction(AccessibilityNodeInfo.ACTION_PASTE)};require(ok){"This text action is unavailable for this field."}}finally{node.recycle()};done(null)}
     else->throw IllegalArgumentException("Unsupported phone key.")
    }}
    "text"->{val text=input.getString("text");require(text.isNotEmpty()&&text.length<=2000);edit(text);done(null)}
@@ -61,7 +61,7 @@ class PhoneControlService: AccessibilityService() {
   val node=rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: throw IllegalStateException("Tap a text field on the phone first.")
   try{
    require(node.isEditable&&!node.isPassword){"This field cannot be edited remotely."}
-   val old=node.text?.toString().orEmpty();require(old.length<=12000)
+   val old=if(android.os.Build.VERSION.SDK_INT>=26&&node.isShowingHintText)"" else node.text?.toString().orEmpty();require(old.length<=12000)
    val rawA=node.textSelectionStart.takeIf{it>=0}?:old.length;val rawB=node.textSelectionEnd.takeIf{it>=0}?:old.length
    val a=minOf(rawA,rawB).coerceIn(0,old.length);val b=maxOf(rawA,rawB).coerceIn(a,old.length)
    val start=if(insert==null&&a==b&&!forward&&a>0)old.offsetByCodePoints(a,-1) else a
@@ -69,6 +69,8 @@ class PhoneControlService: AccessibilityService() {
    val next=old.substring(0,start)+(insert?:"")+old.substring(end)
    val bundle=Bundle().apply{putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,next)}
    require(node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT,bundle)){"Text input is unavailable."}
+   val cursor=(start+(insert?.length?:0)).coerceIn(0,next.length)
+   node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION,Bundle().apply{putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT,cursor);putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT,cursor)})
   }finally{node.recycle()}
  }
 }

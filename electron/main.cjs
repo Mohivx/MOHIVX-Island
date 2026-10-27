@@ -2021,7 +2021,7 @@ ipcMain.handle('phone-file-upload',async(event,{device,parent=''})=>{
   }
   return {success:true,files:transfers};
 });
-ipcMain.handle('phone-media-stop',(_event,{device,kind})=>phoneMedia.clear(device,kind));
+ipcMain.handle('phone-media-stop',(_event,{device,kind})=>{if(!kind||kind==='screen'||kind==='all')phoneSync.cancelInputs(device,'Phone screen sharing stopped.');return phoneMedia.clear(device,kind);});
 ipcMain.handle('phone-audio-devices',()=>phoneNative.request('audio-devices'));
 ipcMain.handle('phone-mic-status',async()=>({...(await micAutoSetup.status()),route:micRouter.snapshot(),automatic:currentAppSettings.phoneMicAuto!==false}));
 ipcMain.handle('phone-mic-setup',async event=>{if(![mainWindow,hubWindow].some(win=>win&&!win.isDestroyed()&&win.webContents===event.sender))throw Error('Unsupported setup window.');return micAutoSetup.retry();});
@@ -2038,7 +2038,7 @@ ipcMain.handle('remote-start',async()=>({enabled:false,error:'External relays ar
 ipcMain.handle('remote-stop',()=>{remoteLink.stop();return remoteLink.status();});
 ipcMain.handle('android-pairing',()=>androidGateway.generateNewPin());
 ipcMain.handle('android-revoke',(_event,id)=>androidGateway.revoke(id));
-ipcMain.handle('android-capabilities',(_event,{id,capabilities})=>androidGateway.setCapabilities(id,capabilities));
+ipcMain.handle('android-capabilities',(_event,{id,capabilities})=>{const r=androidGateway.setCapabilities(id,capabilities);if(!Array.isArray(capabilities)||!capabilities.includes('phoneControl')||!capabilities.includes('phoneScreen'))phoneSync.cancelInputs(id,'Phone permission revoked.');return r;});
 ipcMain.handle('hermes-cancel',()=>{hermesService.client.cancel();return {success:true};});
 ipcMain.handle('check-release',async()=>{
   if(!currentAppSettings.releaseFeed)return {available:false,unconfigured:true};
