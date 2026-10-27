@@ -21,7 +21,7 @@ class PhoneFiles(private val context:Context){
  private fun persistedTreePermission(write:Boolean):Boolean {val selected=selectedFolder();if(selected.isEmpty())return false;return context.contentResolver.persistedUriPermissions.any{it.uri.toString()==selected&&it.isReadPermission&&(!write||it.isWritePermission)}}
  fun folderAllowed()=allFilesAllowed()||persistedTreePermission(false)
  fun folderWriteAllowed()=allFilesAllowed()||persistedTreePermission(true)
- fun execute(command:JSONObject):JSONObject=when(command.getString("type")){"photos.list"->photos(command.optInt("offset"));"files.list"->list(command.optString("parent"),command.optInt("offset"));"files.read"->read(command);"files.write"->write(command);"files.abort"->abort(command.optString("transferId"));"files.mkdir"->mkdir(command);"files.rename"->rename(command);else->throw IllegalArgumentException("Unknown file request.")}
+ fun execute(command:JSONObject):JSONObject=when(command.getString("type")){"photos.list"->photos(command.optInt("offset"));"files.list"->list(command.optString("parent"),command.optInt("offset"));"files.read"->read(command);"files.write"->write(command);"files.abort"->abort(command.optString("transferId"));"files.mkdir"->mkdir(command);"files.rename"->rename(command);"files.delete"->delete(command);else->throw IllegalArgumentException("Unknown file request.")}
  private fun photos(offset:Int):JSONObject {
   check(photosAllowed()){"Allow photos in the phone app first."};require(offset in 0..100000)
   val items=JSONArray();var more=false
@@ -52,7 +52,7 @@ class PhoneFiles(private val context:Context){
   val folder=if(parent.isEmpty())root else entries[parent]?.takeIf{it.directory&&it.uri.scheme=="file"}?.uri?.path?.let{java.io.File(it).canonicalFile}?:throw IllegalArgumentException("Open shared storage again.")
   fun allowed(file:java.io.File):Boolean{val p=file.canonicalPath;return (p==root.path||p.startsWith(root.path+java.io.File.separator))&&!p.startsWith(root.path+"/Android/data")&&!p.startsWith(root.path+"/Android/obb")}
   check(allowed(folder)&&folder.isDirectory){"Folder unavailable."}
-  val rows=(folder.listFiles()?:emptyArray()).filter{try{allowed(it)&&it.canRead()}catch(_:Exception){false}}.sortedWith(compareBy<java.io.File>({!it.isDirectory},{it.name.lowercase()}))
+  val rows=(folder.listFiles()?:emptyArray()).filter{try{it.canonicalPath==it.absolutePath&&allowed(it)&&it.canRead()}catch(_:Exception){false}}.sortedWith(compareBy<java.io.File>({!it.isDirectory},{it.name.lowercase()}))
   val page=rows.drop(offset).take(50).map{JSONObject().put("id",remember(Uri.fromFile(it.canonicalFile),it.isDirectory,it.name)).put("name",it.name).put("directory",it.isDirectory).put("size",if(it.isDirectory)0 else it.length())}
   return JSONObject().put("items",JSONArray(page)).put("next",if(offset+page.size<rows.size)offset+page.size else 0)
  }
@@ -106,10 +106,39 @@ class PhoneFiles(private val context:Context){
    renamedUri=Uri.fromFile(target)
   }else{
    check(persistedTreePermission(true)){"Choose a shared folder with write access in the phone app first."}
-   renamedUri=Docs.renameDocument(context.contentResolver,entry.uri,name)?:throw IllegalStateException("The selected folder could not rename this item.")
+   val root=Uri.parse(selectedFolder());check(entry.uri.authority==root.authority&&Docs.isDocumentUri(context,entry.uri)&&Docs.getDocumentId(entry.uri)!=Docs.getTreeDocumentId(root)){"File or folder unavailable."};renamedUri=Docs.renameDocument(context.contentResolver,entry.uri,name)?:throw IllegalStateException("The selected folder could not rename this item.")
   }
   entries.clear();val renamedId=remember(renamedUri,entry.directory,name)
   return JSONObject().put("renamed",true).put("id",renamedId).put("name",name).put("directory",entry.directory)
+ }
+ private fun delete(command:JSONObject):JSONObject {
+  check(folderWriteAllowed()){"Choose a shared folder with write access in the phone app first."}
+  val entry=entries[command.getString("itemId")]?:throw IllegalArgumentException("Open the folder again and choose the item to delete.")
+  val rootKey=if(allFilesAllowed())"ALL" else selectedFolder()
+  check(rootKey.isNotEmpty()){"Choose a shared folder in the phone app first."}
+  if(rootKey!=tree){tree=rootKey;entries.clear();throw IllegalArgumentException("Open the folder again and choose the item to delete.")}
+  if(entry.uri.scheme=="file"){
+   check(allFilesAllowed()){"Shared storage access was disabled."}
+   val target=java.io.File(entry.uri.path?:throw IllegalArgumentException("Open the folder again." )).absoluteFile
+   val root=android.os.Environment.getExternalStorageDirectory().canonicalFile
+   check(target.canonicalPath==target.path&&allowedShared(target)&&target.path!=root.path&&target.exists()){"File or folder unavailable."}
+   check(target.parentFile?.let{allowedShared(it)&&it.isDirectory}==true){"File or folder unavailable."}
+   if(entry.directory){check(target.isDirectory) {"Folder unavailable."};check(target.list()?.isEmpty()==true){"Only empty folders can be deleted."}}
+   else check(target.isFile){"File unavailable."}
+   check(target.delete()){"Could not delete the item."}
+  }else{
+   check(persistedTreePermission(true)){"Choose a shared folder with write access in the phone app first."}
+   val root=Uri.parse(selectedFolder())
+   check(entry.uri.authority==root.authority&&Docs.isDocumentUri(context,entry.uri)&&Docs.getDocumentId(entry.uri)!=Docs.getTreeDocumentId(root)){"File or folder unavailable."}
+   if(entry.directory){
+    val children=Docs.buildChildDocumentsUriUsingTree(root,Docs.getDocumentId(entry.uri))
+    val empty=try{context.contentResolver.query(children,arrayOf(Docs.Document.COLUMN_DOCUMENT_ID),null,null,null)?.use{!it.moveToFirst()}?:false}catch(_:Exception){false}
+    check(empty){"Only empty folders can be deleted."}
+   }
+   check(Docs.deleteDocument(context.contentResolver,entry.uri)){"Could not delete the item."}
+  }
+  entries.clear()
+  return JSONObject().put("deleted",true)
  }
  private fun validName(value:String):String {
   val name=value.trim();require(name.isNotEmpty()&&name.length<=160&&name!="."&&name!=".."&&!name.any{it=='/'||it=='\\'||it=='<'||it=='>'||it==':'||it=='"'||it=='|'||it=='?'||it=='*'||it.code<32}&&!name.endsWith('.')&&!name.endsWith(' ')){"Choose a valid name for the phone item."};return name

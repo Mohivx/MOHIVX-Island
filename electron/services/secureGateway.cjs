@@ -9,7 +9,7 @@ const {seal,open}=require('./secureEnvelope.cjs');
 const {validateInput}=require('./phoneBridge.cjs');
 const {localAddress,directAddresses}=require('./directAddress.cjs');
 const SECURE_REQUEST=Symbol('authenticated envelope');
-const CAPS = ['telemetry', 'volume', 'wallpaper', 'apps', 'ai', 'agents', 'agentApprovals', 'power','remoteInput','desktopView','phoneScreen','phoneCamera','phoneMic','phoneData','phoneFilesWrite','phoneMessages','phoneContacts','phoneCalls','phoneControl','phoneMedia'];
+const CAPS = ['telemetry', 'volume', 'wallpaper', 'apps', 'ai', 'agents', 'agentApprovals', 'power','remoteInput','desktopView','phoneScreen','phoneCamera','phoneMic','phoneData','phoneFilesWrite','phoneMessages','phoneContacts','phoneCalls','phoneControl','phoneMedia','phoneClipboard'];
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 class AndroidGatewayService {
   constructor(port = 9120, appDataDir, log = () => {}, options = {}) {
@@ -50,7 +50,7 @@ class AndroidGatewayService {
   revoke(id) { this.providers.phoneSync?.revoke(id);this.providers.phoneMedia?.clear(id);this.devices = this.devices.filter(d => d.id !== id); this.persist(); return this.status(); }
   setCapabilities(id, capabilities) {
     const d = this.devices.find(d => d.id === id); if (!d) throw new Error('Device not found.');
-    if(!Array.isArray(capabilities))throw Error('Invalid permissions.');d.capabilities = CAPS.filter(c => capabilities.includes(c));for(const [kind,cap]of Object.entries({camera:'phoneCamera',screen:'phoneScreen',mic:'phoneMic'}))if(!d.capabilities.includes(cap))this.providers.phoneMedia?.clear(id,kind);this.persist(); return this.status();
+    if(!Array.isArray(capabilities))throw Error('Invalid permissions.');d.capabilities = CAPS.filter(c => capabilities.includes(c));for(const [kind,cap]of Object.entries({camera:'phoneCamera',screen:'phoneScreen',mic:'phoneMic'}))if(!d.capabilities.includes(cap))this.providers.phoneMedia?.clear(id,kind);if(!d.capabilities.includes('phoneData')&&!d.capabilities.includes('phoneClipboard'))this.providers.phoneSync?.clearShares?.(id);if(!d.capabilities.includes('phoneClipboard'))this.providers.phoneSync?.clearClipboard?.(id);this.persist(); return this.status();
   }
   async body(req,limit=65536) {
     let size = 0, bytes = [];
@@ -121,6 +121,20 @@ class AndroidGatewayService {
         }
         if(!this.devices.includes(device))return reply(403,{success:false,error:'Device revoked.'});
         return reply(200,{...value,requests:device.capabilities.includes('agentApprovals')?requests:[]});
+      }
+      if(route==='/api/phone-clipboard'&&req.method==='POST'){
+        if(!this.devices.includes(device)||!device.capabilities.includes('phoneClipboard'))return reply(403,{success:false,error:'Enable this device permission on the PC.'});
+        const data=await this.body(req,131072);
+        if(!this.devices.includes(device)||!device.capabilities.includes('phoneClipboard'))return reply(403,{success:false,error:'Permission revoked.'});
+        return reply(200,{success:true,...this.providers.phoneSync.receiveClipboard(device,data,'phone')});
+      }
+      if(route==='/api/phone-share'&&req.method==='POST'){
+        const data=await this.body(req,262144);
+        const allowed=data?.kind==='text'?(device.capabilities.includes('phoneData')||device.capabilities.includes('phoneClipboard')):device.capabilities.includes('phoneData');
+        if(!this.devices.includes(device)||!allowed)return reply(403,{success:false,error:'Enable this device permission on the PC.'});
+        const value=this.providers.phoneSync.receiveShare(device,data);
+        if(!this.devices.includes(device))return reply(403,{success:false,error:'Device revoked.'});
+        return reply(200,{success:true,...value});
       }
       if(route==='/api/phone-stop'&&req.method==='POST'){const data=await this.body(req);return reply(200,this.providers.phoneMedia?.clear(device.id,['camera','screen','mic'].includes(data.kind)?data.kind:undefined)||{success:true});}
       if(route==='/api/phone-start'&&req.method==='POST'){const data=await this.body(req),permission={camera:'phoneCamera',screen:'phoneScreen',mic:'phoneMic'}[data.kind];if(!permission||!this.devices.includes(device)||!device.capabilities.includes(permission))return reply(403,{success:false,error:'Enable this device permission on the PC.'});return reply(200,{...this.providers.phoneMedia.begin(device.id,data.kind),mediaLanes:true});}

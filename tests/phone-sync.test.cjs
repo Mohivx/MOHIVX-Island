@@ -25,17 +25,21 @@ test('PC-to-phone file writes require a separate opt-in, bounded safe chunks, an
  assert.deepEqual(await pending,{offset:0,nextOffset:5,complete:true,name:'ok.txt'});
  const revoked=s.request(d,{type:'files.abort',transferId});d.capabilities=[];s.exchange(d,{});await assert.rejects(revoked,/revoked/);
 });
-test('phone folder creation and rename require write permission, validate names and opaque IDs, and sanitize acknowledgements',async()=>{
+test('phone folder operations require write permission, validate names and opaque IDs, and sanitize acknowledgements',async()=>{
  const s=new PhoneSync(),d={id:'phone-folders',capabilities:['phoneData']};s.exchange(d,{});
  await assert.rejects(s.request(d,{type:'files.mkdir',parent:'',name:'Documents'}),/permission/);
  d.capabilities=['phoneFilesWrite'];
  for(const name of ['.','..','../outside','folder/escape','trailing.','bad:name'])await assert.rejects(s.request(d,{type:'files.mkdir',parent:'',name}),/valid name/);
  await assert.rejects(s.request(d,{type:'files.mkdir',parent:'bad',name:'Docs'}),/valid phone folder/);
  await assert.rejects(s.request(d,{type:'files.rename',itemId:'../outside',name:'Docs'}),/file or folder to rename/);
+ await assert.rejects(s.request(d,{type:'files.delete',itemId:'../outside'}),/phone file or folder to delete/);
  const mkdir=s.request(d,{type:'files.mkdir',parent:'',name:'Travel'});let command=s.exchange(d,{}).commands[0];assert.equal(command.type,'files.mkdir');assert.equal(command.name,'Travel');
  s.exchange(d,{results:[{id:command.id,value:{created:true,name:'Travel',directory:true,unexpected:'discard'}}]});assert.deepEqual(await mkdir,{created:true,name:'Travel',directory:true});
  const newId='a'.repeat(64),rename=s.request(d,{type:'files.rename',itemId:newId,name:'Trips'});command=s.exchange(d,{}).commands[0];assert.equal(command.type,'files.rename');assert.equal(command.itemId,newId);
  s.exchange(d,{results:[{id:command.id,value:{renamed:true,id:'b'.repeat(64),name:'Trips',directory:true,unexpected:'discard'}}]});assert.deepEqual(await rename,{renamed:true,id:'b'.repeat(64),name:'Trips',directory:true});
+ const removedId='b'.repeat(64),deletion=s.request(d,{type:'files.delete',itemId:removedId});command=s.exchange(d,{}).commands[0];assert.equal(command.type,'files.delete');assert.equal(command.itemId,removedId);
+ s.exchange(d,{results:[{id:command.id,value:{deleted:true,unexpected:'discard'}}]});assert.deepEqual(await deletion,{deleted:true});
+ const invalidDeletion=s.request(d,{type:'files.delete',itemId:removedId});command=s.exchange(d,{}).commands[0];s.exchange(d,{results:[{id:command.id,value:{deleted:false}}]});await assert.rejects(invalidDeletion,/Invalid phone delete response/);
  const revoked=s.request(d,{type:'files.mkdir',parent:'',name:'Later'});d.capabilities=[];s.exchange(d,{});await assert.rejects(revoked,/revoked/);
 });
 test('phone app listing and launch use separate per-device permissions',async()=>{const s=new PhoneSync(),d={id:'apps',capabilities:['phoneData']};s.exchange(d,{});const listing=s.request(d,{type:'apps.list'});let commands=s.exchange(d,{}).commands;assert.equal(commands[0].type,'apps.list');s.exchange(d,{results:[{id:commands[0].id,value:{items:[{packageName:'com.example.app',name:'Example'}]}}]});assert.deepEqual(await listing,{items:[{packageName:'com.example.app',name:'Example'}]});await assert.rejects(s.request(d,{type:'apps.launch',packageName:'com.example.app'}),/permission/);d.capabilities=['phoneControl'];const invalid=s.request(d,{type:'apps.launch',packageName:'../private'});await assert.rejects(invalid,/installed phone app/);const opening=s.request(d,{type:'apps.launch',packageName:'com.example.app'});commands=s.exchange(d,{}).commands;assert.equal(commands[0].type,'apps.launch');assert.equal(commands[0].packageName,'com.example.app');s.exchange(d,{results:[{id:commands[0].id,value:{needsTap:true}}]});assert.deepEqual(await opening,{needsTap:true});});
@@ -172,4 +176,149 @@ test('encrypted phone sync protects notifications, gates agent requests, and sto
  gateway.setCapabilities(pair.id,['phoneData','agents','agentApprovals']);const r=await sync({notifications:[{id:'n',title:'SMS notification',sms:true}]});assert.equal(r.requests[0].description,'Choose a layout');assert.equal(service.snapshot(pair.id).notifications[0].sms,true);
  const device=gateway.devices[0],p=service.request(device,{type:'files.list'}),commands=(await sync({})).commands;assert.equal(commands.length,1);await sync({results:[{id:commands[0].id,value:{items:[]}}]});assert.deepEqual(await p,{items:[]});
  gateway.revoke(pair.id);assert.equal(service.snapshot(pair.id).at,0);assert.equal((await post('/api/phone-sync',{})).status,401);
+});
+test('local clipboard sync requires explicit opt-in on both ends, suppresses echo loops, blocks sensitive or oversized payloads, and clears on revocation',async()=>{
+ const received=[];let now=200000;
+ const s=new PhoneSync({now:()=>now,onClipboard:item=>received.push(item)});
+ const d={id:'clip-phone',name:'Pixel',capabilities:['phoneData']};
+ s.exchange(d,{status:{clipboardSync:true},clipboard:{text:'Ignored without PC permission'}});
+ assert.equal(s.snapshot(d.id).status.clipboardSync,false);
+ assert.equal(s.snapshot(d.id).clipboard,null);
+ assert.equal(received.length,0);
+ assert.throws(()=>s.receiveClipboard(d,{text:'Hello'}),/permission/);
+ await assert.rejects(s.request(d,{type:'clipboard.set',text:'Hello'}),/permission/);
+
+ // PC permission enabled, but Android opt-in still off
+ d.capabilities=['phoneData','phoneClipboard'];
+ s.exchange(d,{status:{clipboardSync:false}});
+ assert.equal(s.snapshot(d.id).status.clipboardSync,false);
+ assert.equal(s.canAutoSyncClipboard(d,'Hello from PC'),false);
+ await assert.rejects(s.request(d,{type:'clipboard.set',text:'Hello from PC'}),/Enable clipboard sync in Phone on Android first/);
+ await assert.rejects(s.request(d,{type:'clipboard.get'}),/Enable clipboard sync in Phone on Android first/);
+
+ // Opt-in enabled on both ends
+ s.exchange(d,{status:{clipboardSync:true},clipboard:{text:'مرحبا من الهاتف'}});
+ assert.equal(s.snapshot(d.id).status.clipboardSync,true);
+ assert.equal(received.length,1);
+ assert.equal(received[0].text,'مرحبا من الهاتف');
+ assert.equal(s.snapshot(d.id).clipboard.text,'مرحبا من الهاتف');
+ // Echo loop protection: identical text from phone or auto-sync from PC is suppressed
+ assert.deepEqual(s.receiveClipboard(d,{text:'مرحبا من الهاتف'}),{accepted:true,duplicate:true,hash:received[0].hash});
+ assert.equal(received.length,1);
+ assert.equal(s.canAutoSyncClipboard(d,'مرحبا من الهاتف'),false);
+ assert.equal(s.canAutoSyncClipboard(d,'New PC note'),true);
+
+ // Sensitive and oversized payloads are blocked
+ for(const secret of [
+  '-----BEGIN OPENSSH PRIVATE KEY-----\nabc',
+  'ghp_1234567890abcdefghijklmnopqrstuvwx',
+  'AIzaSyD-1234567890abcdefghijklmnopqrstuvw',
+  'password = my_super_secret_value'
+ ]){
+  assert.equal(s.canAutoSyncClipboard(d,secret),false);
+  assert.throws(()=>s.receiveClipboard(d,{text:secret}),/Sensitive clipboard/);
+  await assert.rejects(s.request(d,{type:'clipboard.set',text:secret}),/Sensitive clipboard/);
+ }
+ await assert.rejects(s.request(d,{type:'clipboard.set',text:'x'.repeat(32001)}),/32,000 characters/);
+ await assert.rejects(s.request(d,{type:'clipboard.set',text:'bad\u0000text'}),/32,000 characters/);
+
+ // PC -> phone clipboard.set and clipboard.get round-trip
+ const setPromise=s.request(d,{type:'clipboard.set',text:'Copied on Windows'});
+ assert.equal(s.canAutoSyncClipboard(d,'Copied on Windows'),false);
+ let commands=s.exchange(d,{status:{clipboardSync:true}}).commands;
+ assert.equal(commands[0].type,'clipboard.set');
+ s.exchange(d,{status:{clipboardSync:true},results:[{id:commands[0].id,value:{updated:true}}]});
+ assert.equal((await setPromise).updated,true);
+ assert.equal(s.snapshot(d.id).clipboard.source,'pc');
+
+ const getPromise=s.request(d,{type:'clipboard.get'});
+ commands=s.exchange(d,{status:{clipboardSync:true}}).commands;
+ assert.equal(commands[0].type,'clipboard.get');
+ s.exchange(d,{status:{clipboardSync:true},results:[{id:commands[0].id,value:{text:'Fresh from Android'}}]});
+ const got=await getPromise;
+ assert.equal(got.text,'Fresh from Android');
+ assert.equal(received.at(-1).text,'Fresh from Android');
+
+ // Turning off Android opt-in or PC capability rejects pending clipboard commands and clears state
+ const pendingRevoke=s.request(d,{type:'clipboard.get'});
+ d.capabilities=['phoneData'];
+ s.exchange(d,{status:{clipboardSync:true}});
+ await assert.rejects(pendingRevoke,/revoked/);
+ assert.equal(s.snapshot(d.id).clipboard,null);
+});
+test('Android share-sheet handoff delivers text and chunked files over the encrypted gateway, deduplicates shares, blocks unsafe extensions, and cleans up partial files',async t=>{
+ const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),https=require('node:https');
+ const Gateway=require('../electron/services/secureGateway.cjs'),{seal,open}=require('../electron/services/secureEnvelope.cjs'),{pinClient}=require('./helpers/pinClient.cjs');
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'mohivx-share-')),shareDir=path.join(dir,'shared');
+ const gateway=new Gateway(0,dir,()=>{},{host:'127.0.0.1',discovery:false});t.after(()=>{gateway.stop();fs.rmSync(dir,{recursive:true,force:true});});await gateway.start();
+ const cert=JSON.parse(fs.readFileSync(path.join(dir,'companion-tls.json'))).cert;
+ const post=(route,data)=>new Promise((resolve,reject)=>{const request=https.request({hostname:'127.0.0.1',port:gateway.port,path:route,method:'POST',ca:cert,checkServerIdentity:()=>undefined},res=>{let text='';res.on('data',b=>text+=b);res.on('end',()=>resolve({status:res.statusCode,...JSON.parse(text)}));});request.on('error',reject);request.end(JSON.stringify(data));});
+ gateway.generateNewPin();const phone=await pinClient(gateway.pairing.pin);t.after(()=>phone.close());
+ const start=await post('/api/pair/start',{A:phone.A,secure:true}),proof=await phone.proof(start,gateway.fingerprint),finish=await post('/api/pair/finish',{session:start.session,proof});await phone.verify(finish.proof);const pair=open(phone.key,'pair:'+start.session,finish.sealed);
+ const notices=[],shares=[];
+ const service=new PhoneSync({shareDir,onNotification:n=>notices.push(n),onShare:item=>shares.push(item)});
+ gateway.setProviders({phoneSync:service});
+ let counter=0;const secureCall=async(route,body)=>{counter++;const scope=pair.id+':'+counter;const r=await post('/api/secure',{device:pair.id,counter,...seal(phone.key,'request:'+scope,{route,method:'POST',token:pair.token,body})});return r.status&&r.status!==200?r:open(phone.key,'response:'+scope,r);};
+
+ // Without phoneData/phoneClipboard, share and clipboard routes are forbidden
+ assert.equal((await secureCall('/api/phone-share',{kind:'text',shareId:'share-text-0001',text:'https://example.com'})).httpStatus,403);
+ assert.equal((await secureCall('/api/phone-clipboard',{text:'Clip text'})).httpStatus,403);
+
+ gateway.setCapabilities(pair.id,['phoneData','phoneClipboard']);
+ const clipRes=await secureCall('/api/phone-clipboard',{text:'Direct clipboard push'});
+ assert.equal(clipRes.accepted,true);
+ assert.equal(service.snapshot(pair.id).clipboard.text,'Direct clipboard push');
+
+ // Text share handoff and duplicate shareId suppression
+ const textShare=await secureCall('/api/phone-share',{kind:'text',shareId:'share-text-0001',title:'Article link',text:'https://example.com/notes'});
+ assert.equal(textShare.accepted,true);assert.equal(textShare.duplicate,false);
+ const dupTextShare=await secureCall('/api/phone-share',{kind:'text',shareId:'share-text-0001',title:'Article link',text:'https://example.com/notes'});
+ assert.equal(dupTextShare.duplicate,true);
+ const repeatedTextShare=await secureCall('/api/phone-share',{kind:'text',shareId:'share-text-0002',title:'Article link',text:'https://example.com/notes'});
+ assert.equal(repeatedTextShare.accepted,true);assert.equal(repeatedTextShare.duplicate,false);
+ assert.equal(service.snapshot(pair.id).shares.length,2);
+ assert.equal(shares.length,2);
+
+ // Unsafe executable/script file extensions and MIME types are blocked
+ for(const bad of [
+  {kind:'file',transferId:'11111111-1111-1111-1111-111111111111',name:'payload.exe',mimeType:'application/octet-stream',size:4,offset:0,data:Buffer.from('test').toString('base64'),eof:true},
+  {kind:'file',transferId:'22222222-2222-2222-2222-222222222222',name:'script.ps1',mimeType:'text/plain',size:4,offset:0,data:Buffer.from('test').toString('base64'),eof:true},
+  {kind:'file',transferId:'33333333-3333-3333-3333-333333333333',name:'note.txt',mimeType:'application/x-msdownload',size:4,offset:0,data:Buffer.from('test').toString('base64'),eof:true},
+  {kind:'file',transferId:'77777777-7777-7777-7777-777777777777',name:'app.apk',mimeType:'application/vnd.android.package-archive',size:4,offset:0,data:Buffer.from('test').toString('base64'),eof:true}
+ ]){
+  const blocked=await secureCall('/api/phone-share',bad);
+  assert.equal(blocked.httpStatus,400);
+ }
+
+ // Multi-chunk file share with progress, collision-safe naming, and duplicate transferId suppression
+ const transferId='44444444-4444-4444-4444-444444444444';
+ const part1=Buffer.from('Hello '),part2=Buffer.from('MOHIVX Share!');
+ const chunk1=await secureCall('/api/phone-share',{kind:'file',transferId,name:'notes.txt',mimeType:'text/plain',size:part1.length+part2.length,offset:0,data:part1.toString('base64'),eof:false});
+ assert.equal(chunk1.complete,false);assert.equal(chunk1.nextOffset,part1.length);
+ assert.equal(service.snapshot(pair.id).shareProgress.sent,part1.length);
+ const chunk2=await secureCall('/api/phone-share',{kind:'file',transferId,name:'notes.txt',mimeType:'text/plain',size:part1.length+part2.length,offset:part1.length,data:part2.toString('base64'),eof:true});
+ assert.equal(chunk2.complete,true);
+ assert.equal(service.snapshot(pair.id).shareProgress,null);
+ assert.equal(fs.readFileSync(path.join(shareDir,'notes.txt'),'utf8'),'Hello MOHIVX Share!');
+ const dupFile=await secureCall('/api/phone-share',{kind:'file',transferId,name:'notes.txt',mimeType:'text/plain',size:part1.length+part2.length,offset:0,data:part1.toString('base64'),eof:false});
+ assert.equal(dupFile.duplicate,true);
+
+ // Second file with same name gets collision-safe suffix "notes (1).txt"
+ const transferId2='55555555-5555-5555-5555-555555555555';
+ const secondFile=await secureCall('/api/phone-share',{kind:'file',transferId:transferId2,name:'notes.txt',mimeType:'text/plain',size:4,offset:0,data:Buffer.from('copy').toString('base64'),eof:true});
+ assert.equal(secondFile.item.name,'notes (1).txt');
+ assert.equal(fs.readFileSync(path.join(shareDir,'notes (1).txt'),'utf8'),'copy');
+
+ // Abort cleans up temporary .part file
+ const abortId='66666666-6666-6666-6666-666666666666';
+ await secureCall('/api/phone-share',{kind:'file',transferId:abortId,name:'partial.txt',mimeType:'text/plain',size:10,offset:0,data:Buffer.from('12345').toString('base64'),eof:false});
+ assert.equal(fs.existsSync(path.join(shareDir,'.mohivx-share-'+abortId+'.part')),true);
+ const aborted=await secureCall('/api/phone-share',{kind:'abort',transferId:abortId});
+ assert.equal(aborted.aborted,true);
+ assert.equal(fs.existsSync(path.join(shareDir,'.mohivx-share-'+abortId+'.part')),false);
+
+ // Revoking capabilities clears shares and clipboard
+ gateway.setCapabilities(pair.id,[]);
+ assert.equal(service.snapshot(pair.id).shares.length,0);
+ assert.equal(service.snapshot(pair.id).clipboard,null);
 });

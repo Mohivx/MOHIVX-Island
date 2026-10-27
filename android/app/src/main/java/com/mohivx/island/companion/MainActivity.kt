@@ -35,7 +35,7 @@ class MainActivity:Activity() {
     private var pendingCapture=""
     private val remoteCapture=object:android.content.BroadcastReceiver(){override fun onReceive(c:android.content.Context?,i:Intent?){reviewCapture(i?.getStringExtra("kind").orEmpty())}}
     private fun reviewCapture(kind:String){if(kind !in listOf("mic","camera","screen"))return;AlertDialog.Builder(this).setTitle(t("PC sharing request","طلب مشاركة من الكمبيوتر")).setMessage(t("Start phone $kind sharing?","بدء مشاركة $kind من الهاتف؟")).setNegativeButton(t("Cancel","إلغاء"),null).setPositiveButton(t("Start","بدء")){_,_->beginCapture(kind)}.show()}
-    private fun syncIntent(value:Intent){if(value.getBooleanExtra("openPhone",false))page=4;if(value.getBooleanExtra("openAgents",false))page=3;value.getStringExtra("captureKind")?.let{kind->value.removeExtra("captureKind");reviewCapture(kind)};render();if(client.paired)refresh()}
+    private fun syncIntent(value:Intent){if(PhoneShare.fromIntent(this,value)!=null)page=4;if(value.getBooleanExtra("openPhone",false))page=4;if(value.getBooleanExtra("openAgents",false))page=3;value.getStringExtra("captureKind")?.let{kind->value.removeExtra("captureKind");reviewCapture(kind)};render();if(client.paired)refresh()}
     private fun startPhoneSync(){if(android.os.Build.VERSION.SDK_INT>=33&&checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=android.content.pm.PackageManager.PERMISSION_GRANTED){requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),952);return};prefs.edit().putBoolean("phoneSync",true).apply();val value=Intent(this,PhoneSyncService::class.java);if(android.os.Build.VERSION.SDK_INT>=26)startForegroundService(value)else startService(value);render()}
     private val captureReceiver=object:android.content.BroadcastReceiver(){override fun onReceive(c:android.content.Context?,i:Intent?){if(page==4&&client.paired)render()}}
     private var accent=Color.rgb(138,180,255)
@@ -234,6 +234,8 @@ class MainActivity:Activity() {
         try{authSignal=android.os.CancellationSignal();android.hardware.biometrics.BiometricPrompt.Builder(this).setTitle(t("Confirm decision","تأكيد القرار")).setAllowedAuthenticators(android.hardware.biometrics.BiometricManager.Authenticators.BIOMETRIC_STRONG or android.hardware.biometrics.BiometricManager.Authenticators.DEVICE_CREDENTIAL).build().authenticate(authSignal!!,mainExecutor,object:android.hardware.biometrics.BiometricPrompt.AuthenticationCallback(){override fun onAuthenticationSucceeded(result:android.hardware.biometrics.BiometricPrompt.AuthenticationResult){authenticating=false;if(!isDestroyed&&!isFinishing)action()};override fun onAuthenticationError(code:Int,message:CharSequence){authenticating=false;status.text=t("Decision cancelled.","أُلغي القرار.")}})}catch(e:Exception){authenticating=false;status.text=t("Could not confirm your identity.","تعذر تأكيد هويتك.")}
     }
     override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?){super.onActivityResult(requestCode,resultCode,data);if(requestCode==954){if(resultCode==RESULT_OK&&data?.data!=null)savePhoneWallpaper(data.data!!);return};if(requestCode==951){if(resultCode==RESULT_OK&&data?.data!=null){val uri=data.data!!;val grant=data.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION);try{contentResolver.takePersistableUriPermission(uri,grant)}catch(_:Exception){};prefs.edit().putString("phoneFolder",uri.toString()).putBoolean("phoneFolderWrite",(grant and Intent.FLAG_GRANT_WRITE_URI_PERMISSION)!=0).apply();render()};return};if(requestCode==930){if(resultCode==RESULT_OK&&data!=null)launchCapture("screen",data);else status.text=t("Screen sharing cancelled.","أُلغيت مشاركة الشاشة.");return};if(requestCode==920){authenticating=false;val action=afterUnlock;afterUnlock=null;if(resultCode==RESULT_OK&&!isDestroyed&&!isFinishing)action?.invoke()}}
+    @Suppress("DEPRECATION")
+    override fun onBackPressed(){if(page==6){page=lastPageBeforeSettings;statusText="";render();return};super.onBackPressed()}
     override fun onNewIntent(value:Intent){super.onNewIntent(value);setIntent(value);handleLink(value);syncIntent(value)}
     private fun handleLink(value:Intent){val uri=value.data ?: return;if(uri.scheme!="mohivx"||uri.host!="connect")return;val endpoint=uri.getQueryParameter("endpoint") ?: return
         AlertDialog.Builder(this).setTitle(t("Direct device connection","اتصال مباشر بالجهاز")).setMessage(t("Use the connection address from your PC?","استخدام عنوان الاتصال من الكمبيوتر؟")+"\n"+endpoint.take(180)).setNegativeButton(t("Cancel","إلغاء"),null).setPositiveButton(t("Use address","استخدام العنوان")){_,_->task({client.setDirectEndpoint(endpoint);JSONObject().put("success",true)}){remoteSetup=false;statusText=t("Enter the six-digit code, or refresh your existing connection.","أدخل الرمز المكوّن من ٦ أرقام، أو حدّث اتصالك الحالي.");if(client.paired)page=5;render()}}.show()
@@ -260,8 +262,58 @@ class MainActivity:Activity() {
             prefs.edit().putString("phoneWallpaper",encoded).putBoolean("phoneWallpaperAuto",false).apply();JSONObject().put("success",true)
         }){statusText=t("Phone card background updated.","تم تحديث خلفية بطاقة الهاتف.");render()}
     }
+    private fun shareErrorText(code:String)=when(code){
+        "too_many_files"->t("Choose up to 10 files at a time to share with your PC.","اختر ١٠ ملفات كحد أقصى في المرة الواحدة لمشاركتها مع الكمبيوتر.")
+        "invalid_uri"->t("Android could not open this shared item safely.","تعذر على أندرويد فتح هذا العنصر المشترك بأمان.")
+        "blocked_type"->t("Executable and script files cannot be shared through phone handoff.","لا يمكن مشاركة الملفات التنفيذية أو البرمجية عبر المشاركة المباشرة.")
+        "file_too_large"->t("Shared files must be between 1 byte and 100 MB each.","يجب أن يكون حجم كل ملف مشترك بين ١ بايت و١٠٠ ميجابايت.")
+        "text_too_large"->t("Shared text must be 32,000 characters (64 KB) or less.","يجب ألا يتجاوز النص المشترك ٣٢٬٠٠٠ حرف (٦٤ كيلوبايت).")
+        "sensitive_text"->t("Sensitive keys, tokens, or passwords were blocked from sharing.","تم منع مشاركة المفاتيح أو الرموز أو كلمات المرور الحساسة.")
+        else->t("Choose text or a supported file to share with your PC.","اختر نصًا أو ملفًا مدعومًا لمشاركته مع الكمبيوتر.")
+    }
+    private fun shareCard(){
+        val draft=PhoneShare.currentDraft ?: return
+        val box=card(selected=true)
+        text(box,t("Share to your PC","مشاركة إلى الكمبيوتر"),17f,ink,true);gap(box,6)
+        if(draft.errorCode.isNotEmpty()){
+            text(box,shareErrorText(draft.errorCode),12f,accent);gap(box,8)
+            button(box,t("Dismiss","إغلاق"),compact=true){PhoneShare.clear();render()}
+            return
+        }
+        if(draft.files.isNotEmpty()){
+            for(item in draft.files){
+                val kb=maxOf(1L,(item.size+1023L)/1024L)
+                text(box,"${item.name} · ${if(kb>=1024)"${kb/1024} MB" else "$kb KB"}",12f,ink)
+            }
+        }else{
+            if(draft.title.isNotEmpty()){text(box,draft.title,13f,ink,true);gap(box,4)}
+            text(box,draft.text.take(280),12f,muted)
+        }
+        val canShare=client.paired&&(has("phoneData")||(draft.files.isEmpty()&&has("phoneClipboard")))
+        if(!client.paired){gap(box,6);text(box,t("Pair your phone with your PC first before sending.","اقترن بالكمبيوتر أولًا قبل الإرسال."),11f,accent)}
+        else if(!canShare){gap(box,6);text(box,if(draft.files.isNotEmpty())t("Enable Phone notifications and files on your PC first, then tap Refresh permissions.","فعّل صلاحية «الإشعارات وملفات الهاتف» من الكمبيوتر أولًا، ثم اضغط تحديث الصلاحيات.")else t("Enable Phone clipboard sync or Phone notifications and files on your PC first, then tap Refresh permissions.","فعّل «مزامنة حافظة الهاتف» أو «إشعارات وملفات الهاتف» من الكمبيوتر أولًا، ثم اضغط تحديث الصلاحيات."),11f,muted)}
+        if(PhoneShare.progressLabel.isNotEmpty()){gap(box,6);text(box,PhoneShare.progressLabel,12f,accent)}
+        gap(box,8);val actions=row(box)
+        button(actions,if(PhoneShare.sending)t("Sending…","جارٍ الإرسال…")else t("Send to PC","إرسال إلى الكمبيوتر"),primary=true,compact=true,enabled=!PhoneShare.sending&&canShare){
+            PhoneShare.sending=true;PhoneShare.progressLabel=t("Sending to PC…","جارٍ الإرسال إلى الكمبيوتر…");render()
+            worker.execute{
+                try{
+                    PhoneShare.send(this,client,draft){idx,total,name,sent,size->
+                        val pct=if(size>0L)((sent*100L)/size).toInt().coerceIn(0,100)else 100
+                        PhoneShare.progressLabel="$name ($idx/$total) · $pct%"
+                        runOnUiThread{if(!isDestroyed)status.text=PhoneShare.progressLabel}
+                    }
+                    runOnUiThread{if(!isDestroyed){PhoneShare.clear();statusText=t("Shared with your PC.","تمت المشاركة مع الكمبيوتر.");render()}}
+                }catch(e:Exception){
+                    runOnUiThread{if(!isDestroyed){PhoneShare.sending=false;val m=e.message.orEmpty();PhoneShare.progressLabel=if(m.contains("cancel",true))t("Share cancelled.","أُلغيت المشاركة.")else if(m.contains("Sensitive",true))t("Sensitive content was blocked.","تم منع المحتوى الحساس.")else if(m.contains("file type",true))t("This file type cannot be shared to the PC.","لا يمكن مشاركة هذا النوع من الملفات.")else t("Could not finish sharing. Check the PC connection and try again.","تعذر إكمال المشاركة. تحقق من اتصال الكمبيوتر وحاول مجددًا.");render()}}
+                }
+            }
+        }
+        button(actions,if(PhoneShare.sending)t("Cancel","إلغاء")else t("Dismiss","إغلاق"),compact=true){if(PhoneShare.sending)PhoneShare.requestCancel() else{PhoneShare.clear();render()}}
+    }
     private fun phonePage(){
         text(body,t("Your phone, part of your PC","هاتفك، جزء من الكمبيوتر"),24f,ink,true);gap(body,6);text(body,t("Start sharing here. Stop at any time from this page or the Android notification.","ابدأ المشاركة من هنا، وأوقفها من هذه الصفحة أو إشعار أندرويد في أي وقت."),13f,muted);gap(body,18)
+        shareCard()
         val sync=card(selected=PhoneSyncService.active);text(sync,t("Notifications, messages and files","الإشعارات والرسائل والملفات"),17f,ink,true);gap(sync,6);text(sync,t("Sync shares incoming notifications (including SMS notifications), selected photos and a folder you choose. Agent requests can reach you while the app is in the background.","المزامنة تشارك الإشعارات الواردة، ومنها إشعارات الرسائل النصية، والصور والمجلد الذي تختاره. تصلك طلبات الوكلاء حتى والتطبيق بالخلفية."),12f,muted);gap(sync)
         button(sync,if(PhoneSyncService.active)t("Stop background sync","إيقاف المزامنة بالخلفية")else t("Enable background sync","تفعيل المزامنة بالخلفية")){if(PhoneSyncService.active){prefs.edit().putBoolean("phoneSync",false).apply();PhoneNotifications.clear();stopService(Intent(this,PhoneSyncService::class.java));render()}else startPhoneSync()}
         val smsRead=PhoneMessages.canRead(this);val smsSend=PhoneMessages.canSend(this)
@@ -283,6 +335,14 @@ class MainActivity:Activity() {
             if(android.os.Build.VERSION.SDK_INT>=23)requestPermissions(arrayOf(android.Manifest.permission.READ_CALL_LOG),957)
         };gap(sync)
         gap(sync);button(sync,t("Allow notification access","السماح بالوصول للإشعارات"),compact=true){startActivity(Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))};gap(sync)
+        val clipOn=PhoneClipboard.enabled(this)
+        text(sync,t("Clipboard and share-sheet handoff","مزامنة الحافظة والمشاركة السريعة"),14f,ink,true);gap(sync,4)
+        text(sync,t("Opt-in clipboard sync exchanges plain text with your PC and blocks sensitive keys or passwords. You can also share text or files from any Android app via Share → MOHIVX Island.","مزامنة الحافظة الاختيارية تتبادل النصوص مع الكمبيوتر وتمنع المفاتيح وكلمات المرور الحساسة. يمكنك أيضًا مشاركة النصوص أو الملفات من أي تطبيق عبر مشاركة ← MOHIVX Island."),11f,muted);gap(sync,6)
+        val clipRow=row(sync)
+        button(clipRow,if(clipOn)t("Clipboard sync: on","مزامنة الحافظة: مفعلة")else t("Enable clipboard sync","تفعيل مزامنة الحافظة"),compact=true){PhoneClipboard.setEnabled(this,!clipOn);statusText=if(!clipOn)t("Clipboard sync enabled on this phone.","تم تفعيل مزامنة الحافظة على الهاتف.")else t("Clipboard sync turned off.","تم إيقاف مزامنة الحافظة.");render()}
+        button(clipRow,t("Send clipboard to PC","إرسال الحافظة للكمبيوتر"),compact=true,enabled=clipOn&&has("phoneClipboard")){task({PhoneClipboard.sendNow(this,client)}){statusText=t("Phone clipboard sent to your PC.","أُرسلت حافظة الهاتف إلى الكمبيوتر.");status.text=statusText}}
+        if(!has("phoneClipboard")){gap(sync,4);text(sync,t("Enable Phone clipboard sync on your PC to exchange clipboard text.","فعّل «مزامنة حافظة الهاتف» من الكمبيوتر لتبادل نصوص الحافظة."),11f,muted)}
+        gap(sync)
         button(sync,t("Allow photos","السماح بالصور"),compact=true){val permission=if(android.os.Build.VERSION.SDK_INT>=33)android.Manifest.permission.READ_MEDIA_IMAGES else android.Manifest.permission.READ_EXTERNAL_STORAGE;requestPermissions(if(android.os.Build.VERSION.SDK_INT>=34)arrayOf(permission,android.Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)else arrayOf(permission),953)};gap(sync)
         button(sync,t("Choose shared folder","اختيار مجلد مشترك"),compact=true){startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION),951)}
         gap(sync,5);text(sync,if(PhoneFiles(this).folderWriteAllowed())t("Phone folder can receive files.","مجلد الهاتف جاهز لاستقبال الملفات.")else t("Choose the shared folder again and allow writing to send files from your PC.","اختر المجلد المشترك مرة أخرى واسمح بالكتابة لإرسال الملفات من الكمبيوتر."),11f,muted)
@@ -326,10 +386,10 @@ class MainActivity:Activity() {
         text(methods,t("Wi-Fi: connect both devices to the same network. USB network: connect a cable, enable USB tethering in Android, then choose the matching direct PC address. Bluetooth network: pair with Windows and connect a Bluetooth PAN network before using its direct address.","واي فاي: صل الجهازين بالشبكة نفسها. شبكة USB: صل الكابل وفعّل ربط USB من أندرويد ثم اختر عنوان الكمبيوتر المباشر المناسب. شبكة البلوتوث: اقترن بويندوز واتصل بشبكة Bluetooth PAN ثم استخدم عنوانها المباشر."),12f,muted)
         gap(methods,6);text(methods,t("USB and Bluetooth use system network sharing here; direct accessory/Bluetooth data pairing is not included in this version. Internet access needs a reachable direct IP address; no relay server is used.","USB والبلوتوث هنا عبر مشاركة شبكة النظام؛ الربط المباشر كبروتوكول مستقل غير متاح في هذا الإصدار. الوصول عبر الإنترنت يحتاج عنوان IP مباشرًا يمكن الوصول إليه؛ دون خادم وسيط."),11f,muted)
         val permissions=card();text(permissions,t("Permissions","الصلاحيات"),16f,ink,true);gap(permissions)
-        for((id,name) in listOf("telemetry" to t("Live information","بيانات الجهاز"),"volume" to t("Sound","الصوت"),"wallpaper" to t("Wallpapers","الخلفيات"),"apps" to t("Applications","التطبيقات"),"ai" to t("Conversation","المحادثة"),"agents" to t("Coding agents","وكلاء البرمجة"),"agentApprovals" to t("Agent approvals","موافقات الوكلاء"),"power" to t("Lock screen","قفل الشاشة"),"remoteInput" to t("Mouse and keyboard","الماوس والكيبورد"),"desktopView" to t("PC screen","شاشة الكمبيوتر"),"phoneScreen" to t("Phone screen","شاشة الهاتف"),"phoneCamera" to t("Phone camera","كاميرا الهاتف"),"phoneMic" to t("Phone microphone","مايك الهاتف"),"phoneData" to t("Phone notifications and files","الإشعارات وملفات الهاتف"),"phoneMessages" to t("Phone SMS messages","رسائل SMS للهاتف"),"phoneContacts" to t("Phone contact names","أسماء جهات اتصال الهاتف"),"phoneCalls" to t("Phone call history and dialer","سجل المكالمات وفتح الاتصال"),"phoneControl" to t("Control phone screen","التحكم بشاشة الهاتف"))){text(permissions,(if(has(id))"● " else "○ ")+name,12f,if(has(id))accent else muted);gap(permissions,5)}
+        for((id,name) in listOf("telemetry" to t("Live information","بيانات الجهاز"),"volume" to t("Sound","الصوت"),"wallpaper" to t("Wallpapers","الخلفيات"),"apps" to t("Applications","التطبيقات"),"ai" to t("Conversation","المحادثة"),"agents" to t("Coding agents","وكلاء البرمجة"),"agentApprovals" to t("Agent approvals","موافقات الوكلاء"),"power" to t("Lock screen","قفل الشاشة"),"remoteInput" to t("Mouse and keyboard","الماوس والكيبورد"),"desktopView" to t("PC screen","شاشة الكمبيوتر"),"phoneScreen" to t("Phone screen","شاشة الهاتف"),"phoneCamera" to t("Phone camera","كاميرا الهاتف"),"phoneMic" to t("Phone microphone","مايك الهاتف"),"phoneData" to t("Phone notifications and files","الإشعارات وملفات الهاتف"),"phoneFilesWrite" to t("Phone file management","إدارة ملفات الهاتف"),"phoneMessages" to t("Phone SMS messages","رسائل SMS للهاتف"),"phoneContacts" to t("Phone contact names","أسماء جهات اتصال الهاتف"),"phoneCalls" to t("Phone call history and dialer","سجل المكالمات وفتح الاتصال"),"phoneControl" to t("Control phone screen","التحكم بشاشة الهاتف"),"phoneMedia" to t("Phone media controls","التحكم بوسائط الهاتف"),"phoneClipboard" to t("Phone clipboard sync","مزامنة حافظة الهاتف"))){text(permissions,(if(has(id))"● " else "○ ")+name,12f,if(has(id))accent else muted);gap(permissions,5)}
         text(permissions,t("Manage these permissions on your PC.","أدر هذه الصلاحيات من الكمبيوتر."),11f,muted)
         if(has("agents"))button(body,t("Coding agent activity","نشاط وكلاء البرمجة")){page=3;render();refresh()}
-        gap(body,12);button(body,t("Forget this PC","نسيان الكمبيوتر"),compact=true){AlertDialog.Builder(this).setMessage(t("Remove this connection from your phone? Revoke the device on your PC to remove all access.","حذف الاتصال من الهاتف؟ ألغِ ربط الجهاز من الكمبيوتر لسحب الوصول بالكامل.")).setNegativeButton(t("Cancel","إلغاء"),null).setPositiveButton(t("Forget","نسيان")){_,_->prefs.edit().putBoolean("phoneSync",false).apply();PhoneNotifications.clear();stopService(Intent(this,PhoneSyncService::class.java));stopService(Intent(this,PhoneCaptureService::class.java));task({try{client.request("/api/phone-stop",JSONObject())}catch(_:Exception){};client.forget();JSONObject().put("success",true)}){state=null;telemetry=null;agents=null;pairingCode="";statusText="";render()}}.show()}
+        gap(body,12);button(body,t("Forget this PC","نسيان الكمبيوتر"),compact=true){AlertDialog.Builder(this).setMessage(t("Remove this connection from your phone? Revoke the device on your PC to remove all access.","حذف الاتصال من الهاتف؟ ألغِ ربط الجهاز من الكمبيوتر لسحب الوصول بالكامل.")).setNegativeButton(t("Cancel","إلغاء"),null).setPositiveButton(t("Forget","نسيان")){_,_->prefs.edit().putBoolean("phoneSync",false).apply();PhoneClipboard.setEnabled(this,false);PhoneShare.clear();PhoneNotifications.clear();stopService(Intent(this,PhoneSyncService::class.java));stopService(Intent(this,PhoneCaptureService::class.java));task({try{client.request("/api/phone-stop",JSONObject())}catch(_:Exception){};client.forget();JSONObject().put("success",true)}){state=null;telemetry=null;agents=null;pairingCode="";statusText="";render()}}.show()}
     }
     private fun settingsPage() {
         button(body,t("Back","رجوع"),compact=true){page=lastPageBeforeSettings;render()}
@@ -370,6 +430,9 @@ class MainActivity:Activity() {
     private fun task(work:()->JSONObject,done:(JSONObject)->Unit) {
         if(busy)return;busy=true;buttons.forEach{it.isEnabled=false};status.text=t("Working…","جارٍ التنفيذ…")
         worker.execute{try{val value=work();runOnUiThread{if(!isDestroyed){busy=false;buttons.forEach{it.isEnabled=it.tag!=false};done(value)}}}catch(e:Exception){runOnUiThread{if(!isDestroyed){busy=false;buttons.forEach{it.isEnabled=it.tag!=false};val message=e.message ?: "";statusText=when{
+            message.contains("Sensitive",true)->t("Sensitive clipboard content was blocked from syncing.","تم منع مزامنة محتوى الحافظة الحساس.")
+            message.contains("plain text",true)->t("Copy plain text (up to 32,000 characters) on your phone first.","انسخ نصًا عاديًا (حتى ٣٢٬٠٠٠ حرف) على هاتفك أولًا.")
+            message.contains("clipboard sync",true)->t("Enable clipboard sync on your phone first.","فعّل مزامنة الحافظة على هاتفك أولًا.")
             message.contains("permission",true)->t("Enable this permission on your PC.","فعّل هذه الصلاحية من الكمبيوتر.")
             message.contains("No PC",true)->t("No PC found. Use the same Wi-Fi and generate a code on your PC.","لم يُعثر على الكمبيوتر. تأكد من شبكة واي فاي وأنشئ الرمز من الكمبيوتر.")
             message.contains("six digits",true)->t("Enter the six-digit code.","أدخل الرمز المكوّن من ٦ أرقام.")

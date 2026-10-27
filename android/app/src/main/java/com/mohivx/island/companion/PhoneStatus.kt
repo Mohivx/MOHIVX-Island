@@ -42,6 +42,7 @@ object PhoneStatus {
    .put("messagesSend",PhoneMessages.canSend(context))
    .put("contactsRead",PhoneCalls.canReadContacts(context))
    .put("callsRead",PhoneCalls.canReadCalls(context))
+   .put("clipboardSync",PhoneClipboard.enabled(context))
    .put("controlEnabled",PhoneControlService.enabled())
    .put("display",JSONObject().put("width",size.x.takeIf{it>0}?:metrics.widthPixels).put("height",size.y.takeIf{it>0}?:metrics.heightPixels).put("densityDpi",metrics.densityDpi).put("rotation",display?.rotation?:0))
   if(includeWallpaper){val profile=PhoneWallpaper.profile(context);result.put("wallpaper",profile.image).put("wallpaperSource",profile.source)}

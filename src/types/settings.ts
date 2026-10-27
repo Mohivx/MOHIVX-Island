@@ -176,6 +176,7 @@ export interface MohivxSettings {
   phoneMicAuto:boolean;
   phoneSelectedDevice:string;
   phoneDeviceLayout:Record<string,{x:number;y:number}>;
+  phoneClipboardAutoSync:boolean;
   phoneMicSink:string;
   agentNotifyOnError: boolean;
   agentSyncToAndroid: boolean;
@@ -309,7 +310,7 @@ export const DEFAULT_MOHIVX_SETTINGS: MohivxSettings = {
   agentBridgeEnabled:true,
   agentShowRequests:true,
   wallpaperTransition:true,
-  phoneCameraDevice:'',phoneMicDevice:'',phoneMicAuto:true,phoneSelectedDevice:'',phoneDeviceLayout:{},
+  phoneCameraDevice:'',phoneMicDevice:'',phoneMicAuto:true,phoneSelectedDevice:'',phoneDeviceLayout:{},phoneClipboardAutoSync:false,
   phoneMicSink:'',
   agentNotifyOnError: true,
   agentSyncToAndroid: true,

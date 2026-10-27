@@ -372,6 +372,23 @@ function categorizeClipboardContent(text, image) {
   return { type: 'text', icon: 'text' };
 }
 
+function applyIncomingPhoneClipboard(text){
+  if(typeof text!=='string'||!text.trim()||isSensitiveClipboard(text))return;
+  lastClipboardText=text;
+  suppressedClips.delete(clipboardHash(text));
+  clipboard.writeText(text);
+  const trimmed=text.trim(),{type,icon}=categorizeClipboardContent(trimmed);
+  const lines=text.split(/\r?\n/).length,words=trimmed.split(/\s+/).filter(Boolean).length,chars=text.length;
+  const title=text.length>38?text.slice(0,38)+'...':text;
+  const existingIdx=clipboardHistory.findIndex(c=>c.fullText===text);
+  if(existingIdx!==-1){const item=clipboardHistory[existingIdx];item.time='now';clipboardHistory.splice(existingIdx,1);clipboardHistory.unshift(item);}
+  else{clipboardHistory.unshift({id:'clip-'+Date.now(),group:'TODAY',type,icon,title,fullText:text,size:`${chars} characters • ${words} words • ${lines} line${lines>1?'s':''}`,time:'now',isPinned:false});if(clipboardHistory.length>(currentAppSettings.clipboardMaxItems||50))clipboardHistory.length=currentAppSettings.clipboardMaxItems||50;}
+  saveClipboardHistory();
+  for(const win of [mainWindow,hubWindow])if(win&&!win.isDestroyed())win.webContents.send('clipboard-updated',clipboardHistory);
+}
+phoneSync.onClipboard=item=>applyIncomingPhoneClipboard(item?.text);
+phoneSync.onShare=(item,device)=>{if(item?.kind==='text'&&device?.capabilities?.includes('phoneClipboard')&&!isSensitiveClipboard(item.text))applyIncomingPhoneClipboard(item.text);};
+
 function startClipboardMonitor() {
   setInterval(() => {
     try {
@@ -380,6 +397,7 @@ function startClipboardMonitor() {
       if (text && text.trim() && text !== lastClipboardText && !(currentAppSettings.clipboardFilterSensitive && isSensitiveClipboard(text))) {
         lastClipboardText = text;
         suppressedClips.delete(clipboardHash(text));
+        if(currentAppSettings.phoneClipboardAutoSync===true){for(const d of androidGateway.devices)if(phoneSync.canAutoSyncClipboard(d,text))void phoneSync.request(d,{type:'clipboard.set',text}).catch(()=>{});}
         const trimmed = text.trim();
         const { type, icon } = categorizeClipboardContent(trimmed);
         const lines = text.split(/\r?\n/).length;
@@ -1700,7 +1718,7 @@ const legacyConfigFilePath = path.join(os.homedir(), '.hitodama-ai', 'config.jso
 const legacySettingsFilePath = path.join(os.homedir(), '.hitodama-ai', 'settings.json');
 
 const defaultAppSettings = {
-  agentBridgeEnabled:true,agentShowRequests:true,agentNotifyOnComplete:true,agentNotifyOnError:true,agentSyncToAndroid:true,wallpaperTransition:true,phoneCameraDevice:'',phoneMicDevice:'',phoneMicSink:'',phoneMicAuto:true,phoneSelectedDevice:'',phoneDeviceLayout:{},
+  agentBridgeEnabled:true,agentShowRequests:true,agentNotifyOnComplete:true,agentNotifyOnError:true,agentSyncToAndroid:true,wallpaperTransition:true,phoneCameraDevice:'',phoneMicDevice:'',phoneMicSink:'',phoneMicAuto:true,phoneSelectedDevice:'',phoneDeviceLayout:{},phoneClipboardAutoSync:false,
   appLang: 'en',userName:'',weatherCity:'',historySide:'left',windowControlsSide:'right',advancedMode:false,uiSounds:true,uiSoundVolume:.12,abilitySoundVolume:.16,liveVoiceModel:'gemini-3.8-live',replySpeed:'patient',
   baselineVersion: 2,
   aiEnabled: true, aiProvider: 'gemini-cloud', voiceInputEnabled: true,
@@ -1940,7 +1958,34 @@ ipcMain.handle('desktop-window-state',event=>desktopWindowState(desktopWindow(ev
 ipcMain.handle('desktop-window-action',(event,action)=>{const win=desktopWindow(event);if(action==='minimize')win.minimize();else if(action==='maximize'){if(win.isMaximized())win.unmaximize();else win.maximize();}else if(action==='pin')win.setAlwaysOnTop(!win.isAlwaysOnTop());else if(action==='close')win.close();else throw Error('Unsupported window action.');if(win.isDestroyed())return null;const state=desktopWindowState(win);win.webContents.send('desktop-window-state-changed',state);return state;});
 ipcMain.handle('phone-viewer-open',(_event,{device,kind})=>{const phone=androidGateway.devices.find(phone=>phone.id===device);if(!phone||!['screen','camera'].includes(kind))throw Error('Choose a paired phone.');phoneViewers.open(device,kind);return {success:true};});
 ipcMain.handle('phone-media-status',()=>phoneMedia.snapshot());
-ipcMain.handle('phone-sync-status',(_event,id)=>{const d=androidGateway.devices.find(d=>d.id===id);const s=phoneSync.snapshot(id);return d?{...s,notifications:d.capabilities.includes('phoneData')?s.notifications:[]}:{};});
+ipcMain.handle('phone-sync-status',(_event,id)=>{const d=androidGateway.devices.find(d=>d.id===id);const s=phoneSync.snapshot(id);return d?{...s,notifications:d.capabilities.includes('phoneData')?s.notifications:[],clipboard:d.capabilities.includes('phoneClipboard')?s.clipboard:null,shares:(d.capabilities.includes('phoneData')||d.capabilities.includes('phoneClipboard'))?s.shares:[],shareProgress:d.capabilities.includes('phoneData')?s.shareProgress:null}:{};});
+ipcMain.handle('phone-clipboard-send',async(event,{device,text}={})=>{
+  const win=BrowserWindow.fromWebContents(event.sender);if(!win||win.isDestroyed()||(win!==mainWindow&&win!==hubWindow))throw Error('Window action unavailable.');
+  const d=androidGateway.devices.find(item=>item.id===device);
+  const value=typeof text==='string'?text:clipboard.readText();
+  if(isSensitiveClipboard(value))throw Error('Sensitive clipboard content was blocked from syncing.');
+  const res=await phoneSync.request(d,{type:'clipboard.set',text:value});
+  return {success:true,...res};
+});
+ipcMain.handle('phone-clipboard-read',async(event,{device}={})=>{
+  const win=BrowserWindow.fromWebContents(event.sender);if(!win||win.isDestroyed()||(win!==mainWindow&&win!==hubWindow))throw Error('Window action unavailable.');
+  const d=androidGateway.devices.find(item=>item.id===device);
+  const res=await phoneSync.request(d,{type:'clipboard.get'});
+  return {success:true,text:res.text,hash:res.hash};
+});
+ipcMain.handle('phone-share-open',(event,{device,id}={})=>{
+  const win=BrowserWindow.fromWebContents(event.sender);if(!win||win.isDestroyed()||(win!==mainWindow&&win!==hubWindow))throw Error('Window action unavailable.');
+  const d=androidGateway.devices.find(item=>item.id===device);if(!d)throw Error('Choose a paired phone.');
+  const item=phoneSync.snapshot(device).shares.find(entry=>entry.id===id);
+  if(!item||item.kind!=='file'||!item.filePath||!fs.existsSync(item.filePath))throw Error('Shared file is no longer available on disk.');
+  shell.showItemInFolder(item.filePath);
+  return {success:true};
+});
+ipcMain.handle('phone-share-clear',(event,{device}={})=>{
+  const win=BrowserWindow.fromWebContents(event.sender);if(!win||win.isDestroyed()||(win!==mainWindow&&win!==hubWindow))throw Error('Window action unavailable.');
+  phoneSync.clearReceivedShares(device);
+  return {success:true};
+});
 ipcMain.handle('phone-command',(_event,{device,command})=>phoneSync.request(androidGateway.devices.find(d=>d.id===device),command));
 ipcMain.handle('phone-input',(event,{device,input})=>{const win=BrowserWindow.fromWebContents(event.sender);if(!phoneViewers.matches(win,device,'screen')||!phoneMedia.latest(device,'screen'))throw Error('Keep the paired phone screen viewer active.');return phoneSync.request(androidGateway.devices.find(d=>d.id===device),{type:'input',input});});
 ipcMain.handle('phone-file-save',async(event,{device,id,name,size})=>{
@@ -2302,6 +2347,7 @@ app.whenReady().then(() => {
 
   if(!qaMode)windowsNotifications.start();
   if(!qaMode){audioMeter.start();if(app.isPackaged)void micAutoSetup.ensureReady().catch(error=>log('Automatic MOHIV Mic setup: '+error.message));}
+  try{phoneSync.shareDir=path.join(app.getPath('downloads'),'MOHIVX Shared');}catch{phoneSync.shareDir=path.join(appDataDir,'shared-from-phone');}
   androidGateway.setProviders({
     phoneSync,phoneMedia,
     input:{send:async input=>{const result=await phoneNative.request('input',{input});if(result.success!==true)throw Error(result.error||'Windows refused input.');return {success:true};}},
