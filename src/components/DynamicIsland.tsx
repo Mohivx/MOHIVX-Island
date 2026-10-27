@@ -465,6 +465,7 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
     artwork: '',
     sourceApp: '',
     isPlaying: false,
+    playbackStatus: 'None',
     position: 0,
     duration: 0
   });
@@ -516,7 +517,7 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
   const musicState=musicActivity(mediaInfo,outputAudio,music.enabled);
   const mediaGlance = musicState.visible;
   // If Windows exposes audio output but no track metadata, use the live output meter for playback UI.
-  const mediaIsPlaying = mediaInfo.title ? mediaInfo.isPlaying : outputAudio;
+  const mediaIsPlaying = mediaInfo.title ? (mediaInfo.playbackStatus === 'None' ? mediaInfo.isPlaying : mediaInfo.playbackStatus === 'Playing') : outputAudio;
   const glanceTitle=musicState.outputOnly?(appLang==='ar'?'صوت الجهاز':'Device audio'):mediaInfo.title;
   const glanceArtist=musicState.outputOnly?(appLang==='ar'?'صوت قيد التشغيل':'Sound is playing'):mediaInfo.artist;
   const glanceArtwork=musicState.outputOnly?undefined:mediaInfo.artwork;
@@ -1279,10 +1280,13 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
     }
   };
 
-  const handleMediaControl = (action: 'play-pause' | 'next' | 'prev') => {
-    if (action === 'play-pause') setMediaInfo((p) => p.title ? ({ ...p, isPlaying: !p.isPlaying }) : p);
-    if (electron && electron.ipcRenderer) {
-      electron.ipcRenderer.send('media-control', action);
+  const handleMediaControl = async (action: 'play-pause' | 'next' | 'prev') => {
+    if (!electron?.ipcRenderer) return;
+    try {
+      const result = await electron.ipcRenderer.invoke('media-control-action', action);
+      if (result?.media) setMediaInfo(result.media);
+    } catch (error) {
+      console.error('Media control failed:', error);
     }
   };
 
@@ -2164,7 +2168,7 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
                         </div>
                         <span className={`font-mono text-[10px] ${mediaIsPlaying ? 'text-emerald-400 font-bold' : 'text-zinc-400'}`}>
                           {mediaInfo.title
-                            ? mediaIsPlaying ? (appLang === 'ar' ? 'يعمل الآن' : 'Playing') : (appLang === 'ar' ? 'متوقف مؤقتاً' : 'Paused')
+                            ? mediaInfo.playbackStatus === 'Stopped' ? (appLang === 'ar' ? 'متوقف' : 'Stopped') : mediaIsPlaying ? (appLang === 'ar' ? 'يعمل الآن' : 'Playing') : (appLang === 'ar' ? 'متوقف مؤقتاً' : 'Paused')
                             : (appLang === 'ar' ? 'صوت الجهاز يعمل' : 'Device audio is active')}
                         </span>
                       </div>

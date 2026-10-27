@@ -1,24 +1,26 @@
-# MOHIVX Island 1.1.2
+# MOHIVX Island 1.1.3
 
 ## What's new
 
-- Fixed the media playback indicator: when Windows reports active output audio without track metadata, the island now reflects that audio is playing instead of showing a stale Play icon.
-- Kept the Windows media-key fallback for Play/Pause, Previous, and Next controls.
+- Keep the selected Windows media session when paused, so the island reports the real Playing, Paused, or Stopped state instead of switching to another stale player.
+- Play/Pause now uses the session's explicit Play or Pause command and refreshes the displayed state after the action.
+- Previous and Next use the active session when supported and fall back to Windows media keys when that session does not expose those controls.
 
 ## الجديد
 
-- إصلاح مؤشر تشغيل الوسائط: عندما يكتشف ويندوز صوتًا خارجًا من دون بيانات المقطع، تعرض الجزيرة حالة التشغيل ورمز الإيقاف المؤقت بدل رمز تشغيل قديم.
-- الإبقاء على مفاتيح الوسائط في ويندوز للتحكم بالتشغيل والإيقاف المؤقت والسابق والتالي.
+- تثبيت جلسة الوسائط المحددة حتى عند الإيقاف المؤقت، ليعرض التطبيق حالة التشغيل أو الإيقاف المؤقت أو التوقف الحقيقية بدل الانتقال إلى مشغّل قديم آخر.
+- استخدام أمر تشغيل أو إيقاف مؤقت صريح، ثم تحديث الحالة المعروضة بعد تنفيذ الأمر.
+- تشغيل السابق والتالي من الجلسة النشطة، مع الرجوع إلى مفاتيح الوسائط في ويندوز إذا لم يدعم المشغّل تلك الأوامر.
 
 ## Downloads | ملفات التحميل
 
-- **Windows portable:** MOHIVX Island 1.1.2.exe
-- **Windows installer:** MOHIVX-Island-Setup-1.1.2.exe
-- **Android:** MOHIVX Island 1.1.2.apk
+- **Windows portable:** MOHIVX Island 1.1.3.exe
+- **Windows installer:** MOHIVX-Island-Setup-1.1.3.exe
+- **Android:** MOHIVX Island 1.1.3.apk
 
-- **نسخة Windows المحمولة:** MOHIVX Island 1.1.2.exe
-- **مثبّت Windows:** MOHIVX-Island-Setup-1.1.2.exe
-- **Android:** MOHIVX Island 1.1.2.apk
+- **نسخة Windows المحمولة:** MOHIVX Island 1.1.3.exe
+- **مثبّت Windows:** MOHIVX-Island-Setup-1.1.3.exe
+- **Android:** MOHIVX Island 1.1.3.apk
 
 ## License | الترخيص
 

@@ -754,17 +754,31 @@ function createWindow() {
   }));
   ipcMain.handle('get-current-media', () => queryMedia());
 
-  // Send one native media request. A second fallback would toggle playback twice.
+  // Prefer the selected Windows media session and fall back only when that session cannot handle the command.
   const { mediaKeyFallbackCommand } = require('./services/mediaKeyFallback.cjs');
-  ipcMain.on('media-control', (_event, action) => {
-    if (!['play-pause', 'next', 'prev'].includes(action)) return;
+  const runMediaControl = (action) => new Promise((resolve) => {
+    if (!['play-pause', 'next', 'prev'].includes(action)) return resolve({success:false});
     execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', getMediaScriptPath, '-Action', action], { windowsHide: true, timeout: 15000 }, (error, stdout) => {
-      if (error || String(stdout).trim() === 'NO_MEDIA') {
-        execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', mediaKeyFallbackCommand(action)], { windowsHide: true, timeout: 8000 }, () => {});
+      const result = String(stdout || '').trim();
+      if (error || result === 'NO_MEDIA' || result === 'UNSUPPORTED') {
+        if (error) log('Media control failed: ' + error.message);
+        execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', mediaKeyFallbackCommand(action)], { windowsHide: true, timeout: 8000 }, (fallbackError) => {
+          if (fallbackError) log('Media key fallback failed: ' + fallbackError.message);
+          resolve({success:!fallbackError,usedFallback:true});
+        });
+        return;
       }
-      if (error) log(`Media control failed: ${error.message}`);
+      resolve({success:result === 'CONTROL_OK',usedFallback:false});
     });
   });
+  ipcMain.handle('media-control-action', async (_event, action) => {
+    const result = await runMediaControl(action);
+    if (!result.success) return result;
+    await new Promise(resolve => setTimeout(resolve, 250));
+    return {...result,media:await queryMedia.refresh()};
+  });
+  // Preserve the fire-and-forget channel for any older renderer.
+  ipcMain.on('media-control', (_event, action) => { void runMediaControl(action); });
   // Real Media Timeline Seeking
   ipcMain.on('seek-media', (event, seekSec) => {
     log(`seek-media called: ${seekSec}`);
