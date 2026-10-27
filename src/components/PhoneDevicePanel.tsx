@@ -1,7 +1,16 @@
 import {useEffect,useRef,useState} from 'react';
-import {Smartphone,Mic,Camera,Monitor,Bell,MessageSquare,Image,Folder,RefreshCw,Battery,BatteryCharging,Wifi,ChevronRight,AppWindow,Search} from 'lucide-react';
+import {Smartphone,Mic,Camera,Monitor,Bell,MessageSquare,Phone,Image,Folder,RefreshCw,Battery,BatteryCharging,Wifi,ChevronRight,AppWindow,Search} from 'lucide-react';
 import {ipc,useSettings} from '../hooks/useSettings';
 import './phone.css';
+
+function normalizeClientPhone(raw:string){
+ return String(raw||'').replace(/[٠-٩]/g,d=>String(d.charCodeAt(0)-0x0660)).replace(/[۰-۹]/g,d=>String(d.charCodeAt(0)-0x06f0)).replace(/[\s().\-\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,'');
+}
+function formatCallDuration(seconds:number,ar:boolean){
+ if(!seconds||seconds<=0)return ar?'٠ ث':'0s';
+ const mins=Math.floor(seconds/60),secs=seconds%60;
+ return mins>0?(ar?`${mins} د ${secs} ث`:`${mins}m ${secs}s`):(ar?`${secs} ث`:`${secs}s`);
+}
 
 function friendlyPhoneError(error:unknown,ar:boolean){
  const raw=error instanceof Error?error.message:String(error??'');
@@ -22,6 +31,12 @@ function friendlyPhoneError(error:unknown,ar:boolean){
   [/^Enter a valid phone number(\.| and a message of 1–1600 characters\.?)?$/i,'Enter a valid phone number and an SMS message of 1–1600 characters.','أدخل رقم هاتف صالحًا ورسالة SMS بين ١ و١٦٠٠ حرف.'],
   [/^Enter a message of 1–1600 characters\.?$/i,'Enter an SMS message of 1–1600 characters.','أدخل رسالة SMS بين ١ و١٦٠٠ حرف.'],
   [/^Android could not submit this SMS\. Check the SIM and default subscription\.?$/i,'Android could not send this SMS. Check the SIM card and mobile network on your phone.','تعذر على أندرويد إرسال رسالة SMS. تحقق من الشريحة وشبكة الجوال على هاتفك.'],
+  [/^Grant contacts access on Android first\.?$/i,'Allow contact names in Phone on Android first.','اسمح بصلاحية أسماء جهات الاتصال من قسم الهاتف في أندرويد أولًا.'],
+  [/^Provide 1–60 valid phone numbers to resolve\.?$/i,'Provide valid phone numbers to look up contact names.','أدخل أرقام هواتف صالحة للبحث عن أسماء جهات الاتصال.'],
+  [/^Grant call history access on Android first\.?$/i,'Allow call history in Phone on Android first. Android may block READ_CALL_LOG for a manually installed APK.','اسمح بصلاحية سجل المكالمات من قسم الهاتف في أندرويد أولًا. قد يمنع أندرويد صلاحية READ_CALL_LOG المقيّدة في APK مثبّت يدويًا.'],
+  [/^Invalid call history page\.?$/i,'Refresh the call history list and try again.','حدّث قائمة سجل المكالمات وحاول مرة أخرى.'],
+  [/^Enter a valid phone number to dial\.?$/i,'Enter a valid phone number to open in the phone dialer.','أدخل رقم هاتف صالحًا لفتحه في لوحة اتصال الهاتف.'],
+  [/^No dialer app is available on this Android device\.?$/i,'No phone dialer app is available on this Android device.','لا يتوفر تطبيق اتصال على جهاز أندرويد هذا.'],
   [/^This phone notification no longer supports replies\.?$/i,'This phone notification is no longer available for quick reply.','لم يعد هذا الإشعار متاحًا للرد السريع.'],
   [/^This phone notification is no longer available\.?$/i,'This phone notification is no longer available for quick reply.','لم يعد هذا الإشعار متاحًا للرد السريع.'],
   [/^(Permission revoked|Phone permission revoked or request expired)\.?$/i,'This phone permission was turned off or the request expired.','تم إيقاف صلاحية الهاتف أو انتهت مهلة الطلب.'],
@@ -39,24 +54,44 @@ export function PhoneDashboard(){
  const [devices,setDevices]=useState<any[]>([]),[snapshot,setSnapshot]=useState<any>({}),[tab,setTab]=useState('notifications');
  const [items,setItems]=useState<any[]>([]),[parent,setParent]=useState(''),[trail,setTrail]=useState<{id:string;name:string}[]>([]),[next,setNext]=useState(0),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[appQuery,setAppQuery]=useState(''),[replyDrafts,setReplyDrafts]=useState<Record<string,string>>({});
  const [threads,setThreads]=useState<any[]>([]),[threadsNext,setThreadsNext]=useState(0),[activeThread,setActiveThread]=useState<{threadId:string;address:string}|null>(null),[threadMessages,setThreadMessages]=useState<any[]>([]),[messagesNext,setMessagesNext]=useState(0),[smsAddress,setSmsAddress]=useState(''),[smsText,setSmsText]=useState('');
- const generation=useRef(0),threadsLoaded=useRef(false);
+ const [calls,setCalls]=useState<any[]>([]),[callsNext,setCallsNext]=useState(0),[dialNumber,setDialNumber]=useState(''),[contactNames,setContactNames]=useState<Record<string,string>>({});
+ const generation=useRef(0),threadsLoaded=useRef(false),callsLoaded=useRef(false),resolvedNumbersRef=useRef<Set<string>>(new Set());
  const device=devices.some(d=>d.id===settings.phoneSelectedDevice)?settings.phoneSelectedDevice:devices[0]?.id||'';
  const invoke=async(channel:string,value?:unknown)=>{if(!ipc)throw Error(t('Open MOHIVX Island on Windows.','افتح MOHIVX Island على ويندوز.'));const r=await ipc.invoke(channel,value);if(r?.success===false)throw Error(r.error||'Request failed');return r;};
  useEffect(()=>{let alive=true;const read=async()=>{try{const g=await invoke('android-status');if(alive)setDevices(g.devices||[]);}catch{}};void read();const timer=setInterval(read,3000);return()=>{alive=false;clearInterval(timer);};},[]);
- useEffect(()=>{let alive=true;generation.current++;threadsLoaded.current=false;setSnapshot({});setItems([]);setParent('');setTrail([]);setNext(0);setThreads([]);setThreadsNext(0);setActiveThread(null);setThreadMessages([]);setMessagesNext(0);setSmsAddress('');setSmsText('');setMessage('');setBusy(false);const read=async()=>{try{const s=await invoke('phone-sync-status',device);if(alive)setSnapshot(s||{});}catch{}};if(device)void read();const timer=setInterval(read,1500);return()=>{alive=false;clearInterval(timer);};},[device]);
+ useEffect(()=>{let alive=true;generation.current++;threadsLoaded.current=false;callsLoaded.current=false;resolvedNumbersRef.current.clear();setSnapshot({});setItems([]);setParent('');setTrail([]);setNext(0);setThreads([]);setThreadsNext(0);setActiveThread(null);setThreadMessages([]);setMessagesNext(0);setSmsAddress('');setSmsText('');setCalls([]);setCallsNext(0);setDialNumber('');setContactNames({});setMessage('');setBusy(false);const read=async()=>{try{const s=await invoke('phone-sync-status',device);if(alive)setSnapshot(s||{});}catch{}};if(device)void read();const timer=setInterval(read,1500);return()=>{alive=false;clearInterval(timer);};},[device]);
  const action=async(fn:()=>Promise<unknown>)=>{const version=generation.current;setBusy(true);setMessage('');try{await fn();}catch(e){if(version===generation.current)setMessage(friendlyPhoneError(e,ar));}finally{if(version===generation.current)setBusy(false);}};
  const command=(value:unknown)=>invoke('phone-command',{device,command:value});
  const load=async(kind:string,p='',offset=0,append=false)=>{const version=generation.current;const request=kind==='apps'?{type:'apps.list'}:{type:kind==='photos'?'photos.list':'files.list',parent:p,offset};const r=await command(request);if(version!==generation.current)return;setItems(old=>append?[...old,...(r.items||[])]:r.items||[]);setNext(r.next||0);setParent(p);};
  const loadThreads=async(offset=0,append=false)=>{const version=generation.current;const r=await command({type:'messages.threads',offset});if(version!==generation.current)return;threadsLoaded.current=true;setThreads(old=>append?[...old,...(r.items||[])]:r.items||[]);setThreadsNext(r.next||0);};
  const loadMessages=async(thread:{threadId:string;address:string},offset=0,append=false)=>{const version=generation.current;const r=await command({type:'messages.list',threadId:thread.threadId,offset});if(version!==generation.current)return;setActiveThread(thread);if(!append&&thread.address)setSmsAddress(thread.address);setThreadMessages(old=>append?[...(r.items||[]),...old]:r.items||[]);setMessagesNext(r.next||0);};
+ const loadCalls=async(offset=0,append=false)=>{const version=generation.current;const r=await command({type:'calls.list',offset});if(version!==generation.current)return;callsLoaded.current=true;setCalls(old=>append?[...old,...(r.items||[])]:r.items||[]);setCallsNext(r.next||0);};
  const selected=devices.find(d=>d.id===device),status=snapshot.status||{},connected=Boolean(device&&Date.now()-(snapshot.at||0)<15000);
  const can=(cap:string)=>Boolean(selected?.capabilities?.includes(cap)),active=(kind:string)=>status.capture?.includes(kind);
  const canMessages=can('phoneMessages'),canReadSms=Boolean(connected&&canMessages&&status.messagesRead),canSendSms=Boolean(connected&&canMessages&&status.messagesSend);
+ const canContacts=can('phoneContacts'),canResolveContacts=Boolean(connected&&canContacts&&status.contactsRead);
+ const canCalls=can('phoneCalls'),canReadCalls=Boolean(connected&&canCalls&&status.callsRead),canDial=Boolean(connected&&canCalls);
  useEffect(()=>{
   if(!canReadSms){threadsLoaded.current=false;setThreads([]);setThreadsNext(0);setActiveThread(null);setThreadMessages([]);setMessagesNext(0);return;}
   if(tab!=='sms'){threadsLoaded.current=false;return;}
   if(!threadsLoaded.current){threadsLoaded.current=true;void action(()=>loadThreads(0,false));}
  },[tab,device,canReadSms]);
+ useEffect(()=>{
+  if(!canReadCalls){callsLoaded.current=false;setCalls([]);setCallsNext(0);return;}
+  if(tab!=='calls'){callsLoaded.current=false;return;}
+  if(!callsLoaded.current){callsLoaded.current=true;void action(()=>loadCalls(0,false));}
+ },[tab,device,canReadCalls]);
+ useEffect(()=>{
+  if(!canResolveContacts){resolvedNumbersRef.current.clear();setContactNames({});return;}
+  if(tab!=='calls'||!calls.length)return;
+  const missing=[...new Set(calls.map((c:any)=>normalizeClientPhone(c.number)).filter(n=>/^\+?[0-9]{3,20}$/.test(n)&&!resolvedNumbersRef.current.has(n)))].slice(0,60);
+  if(!missing.length)return;
+  const version=generation.current;
+  missing.forEach(n=>resolvedNumbersRef.current.add(n));
+  void command({type:'contacts.resolve',numbers:missing}).then(r=>{
+   if(version===generation.current&&r?.contacts&&typeof r.contacts==='object')setContactNames(old=>({...old,...r.contacts}));
+  }).catch(()=>{missing.forEach(n=>resolvedNumbersRef.current.delete(n));});
+ },[tab,device,canResolveContacts,calls]);
  const notices=snapshot.notifications||[];
  const BatteryIcon=status.charging?BatteryCharging:Battery;
  const connection=({wifi:'Wi-Fi',usb:'USB',bluetooth:'Bluetooth',cellular:t('Mobile data','بيانات الجوال'),ethernet:'Ethernet',offline:t('Offline','غير متصل')} as Record<string,string>)[status.connection]||t('Direct network','شبكة مباشرة');
@@ -70,9 +105,10 @@ export function PhoneDashboard(){
   <div className="phone-device-info"><span className="phone-device-state" data-active={connected}><i/>{connected?t('Connected','متصل'):t('Disconnected','غير متصل')}</span><h2>{selected.name}</h2><p>{status.model||t('Android phone','هاتف أندرويد')}</p><div className="phone-device-facts"><span><BatteryIcon size={17}/>{Number.isInteger(status.battery)?`${status.battery}%`:'—'}{status.charging?' · '+t('Charging','يشحن'):''}</span><span><Wifi size={15}/>{connection}</span></div>{status.version&&<small>MOHIVX Island {status.version}</small>}</div>
  </div>
  <div className="phone-quick-actions">{([['mic',Mic,t('Microphone','المايك'),'phoneMic'],['camera',Camera,t('Camera','الكاميرا'),'phoneCamera'],['screen',Monitor,t('Phone screen','شاشة الهاتف'),'phoneScreen']] as const).map(([kind,Icon,label,cap])=><div key={kind}><button disabled={busy||!connected||!can(cap)} onClick={()=>void action(async()=>{const starting=!active(kind);const r=await command({type:starting?'capture.start':'capture.stop',kind});if(starting&&kind==='screen')await invoke('phone-viewer-open',{device,kind});if(r.needsTap)setMessage(t('Review the sharing request on your phone.','راجع طلب المشاركة على هاتفك.'));})}><Icon size={17}/>{active(kind)?t('Stop ','إيقاف '):t('Start ','تشغيل ')}{label}</button>{kind!=='mic'&&<button aria-label={label+' · '+t('Open window','فتح نافذة')} disabled={!can(cap)} onClick={()=>void action(()=>invoke('phone-viewer-open',{device,kind}))}><ChevronRight size={16}/></button>}</div>)}</div>
- <nav aria-label={t('Phone content','محتوى الهاتف')}>{([['notifications',Bell,t('Notifications','الإشعارات')],['sms',MessageSquare,t('SMS','رسائل SMS')],['apps',AppWindow,t('Apps','التطبيقات')],['photos',Image,t('Photos','الصور')],['files',Folder,t('Files','الملفات')]] as const).map(([id,Icon,label])=><button key={id} aria-pressed={tab===id} disabled={busy} onClick={()=>{generation.current++;setTab(id);setMessage('');setItems([]);setTrail([]);setParent('');setNext(0);if(id==='apps'||id==='photos'||id==='files')void action(()=>load(id));}}><Icon size={15}/>{label}</button>)}</nav>
- {tab!=='sms'&&!can('phoneData')&&<p>{t('Enable Phone content in the connection permissions on your PC.','فعّل «محتوى الهاتف» في صلاحيات الاتصال على الكمبيوتر.')}</p>}
+ <nav aria-label={t('Phone content','محتوى الهاتف')}>{([['notifications',Bell,t('Notifications','الإشعارات')],['sms',MessageSquare,t('SMS','رسائل SMS')],['calls',Phone,t('Calls','المكالمات')],['apps',AppWindow,t('Apps','التطبيقات')],['photos',Image,t('Photos','الصور')],['files',Folder,t('Files','الملفات')]] as const).map(([id,Icon,label])=><button key={id} aria-pressed={tab===id} disabled={busy} onClick={()=>{generation.current++;setTab(id);setMessage('');setItems([]);setTrail([]);setParent('');setNext(0);if(id==='apps'||id==='photos'||id==='files')void action(()=>load(id));}}><Icon size={15}/>{label}</button>)}</nav>
+ {tab!=='sms'&&tab!=='calls'&&!can('phoneData')&&<p>{t('Enable Phone content in the connection permissions on your PC.','فعّل «محتوى الهاتف» في صلاحيات الاتصال على الكمبيوتر.')}</p>}
  {tab==='sms'&&!canMessages&&<p>{t('Enable SMS history and sending in the connection permissions on your PC.','فعّل «سجل رسائل SMS وإرسالها» في صلاحيات الاتصال على الكمبيوتر.')}</p>}
+ {tab==='calls'&&!canCalls&&<p>{t('Enable Call history and dialer in the connection permissions on your PC.','فعّل «سجل المكالمات وفتح الاتصال» في صلاحيات الاتصال على الكمبيوتر.')}</p>}
  {!connected&&<p>{t('Open Phone on Android and enable background sync.','افتح قسم الهاتف في أندرويد وفعّل المزامنة بالخلفية.')}</p>}
  {tab==='notifications'?<>
  <p className="phone-notification-hint">{status.notifications?t('New phone notifications also appear in the island with PC notifications.','تظهر إشعارات الجوال الجديدة في الجزيرة مع إشعارات الكمبيوتر.'):t('Allow notification access from Phone in the Android app.','اسمح بالوصول للإشعارات من قسم الهاتف في تطبيق أندرويد.')}{settings.islandNotificationsEnabled===false&&<button onClick={()=>void update({islandNotificationsEnabled:true})}>{t('Enable island notifications','تفعيل إشعارات الجزيرة')}</button>}</p>
@@ -95,6 +131,33 @@ export function PhoneDashboard(){
   <input aria-label={t('Recipient phone number','رقم المستلم')} dir="ltr" value={smsAddress} onChange={event=>setSmsAddress(event.target.value)} placeholder={t('Phone number (+15550100)','رقم الهاتف (+9665...)')} maxLength={32} disabled={busy||!canSendSms}/>
   <input aria-label={t('SMS message','رسالة SMS')} value={smsText} onChange={event=>setSmsText(event.target.value)} placeholder={t('Write an SMS message…','اكتب رسالة SMS…')} maxLength={1600} disabled={busy||!canSendSms}/>
   <button type="submit" disabled={busy||!canSendSms||!smsAddress.trim()||!smsText.trim()}>{t('Send SMS','إرسال SMS')}</button>
+ </form>
+ </>:tab==='calls'?<>
+ <div className="phone-file-toolbar">
+  <button disabled={busy||!canReadCalls} onClick={()=>{resolvedNumbersRef.current.clear();void action(()=>loadCalls(0,false));}}><RefreshCw size={14}/>{t('Refresh','تحديث')}</button>
+  <span>{t('Call history','سجل المكالمات')}</span>
+ </div>
+ {!status.callsRead?<p className="phone-notification-hint">{t('Allow call history in Phone on Android to view recent calls. Android marks READ_CALL_LOG as a restricted permission and may block it for a manually installed APK; opening numbers in the phone dialer below remains available.','اسمح بصلاحية سجل المكالمات من قسم الهاتف في أندرويد لعرض المكالمات الأخيرة. يصنّف أندرويد صلاحية READ_CALL_LOG كصلاحية مقيّدة وقد يمنعها في APK مثبّت يدويًا؛ ويظل فتح الأرقام في لوحة اتصال الهاتف متاحًا أدناه.')}</p>:<p className="phone-notification-hint">{t('Dialing uses Android ACTION_DIAL to open the number in your phone dialer so you confirm the call on Android. MOHIVX does not become your default dialer and does not answer or reject calls.','يفتح الاتصال الرقم في لوحة اتصال أندرويد عبر ACTION_DIAL لتأكيد المكالمة من هاتفك. لا يصبح MOHIVX تطبيق الهاتف الافتراضي ولا يرد على المكالمات أو يرفضها.')}</p>}
+ <p className="phone-notification-hint">{!canContacts?t('Contact name resolution is off on the PC. Enable Contact names in connection permissions to show saved names for call numbers.','إظهار أسماء جهات الاتصال متوقف على الكمبيوتر. فعّل «أسماء جهات الاتصال» في صلاحيات الاتصال لعرض الأسماء المحفوظة لأرقام المكالمات.'):!status.contactsRead?t('Allow contact names in Phone on Android to resolve call numbers to saved contact names.','اسمح بصلاحية أسماء جهات الاتصال من قسم الهاتف في أندرويد لإظهار الأسماء المحفوظة لأرقام المكالمات.'):t('Contact name resolution is active for call numbers.','إظهار أسماء جهات الاتصال مفعل لأرقام المكالمات.')}</p>
+ {canReadCalls&&<>
+  <div className="phone-call-list">{calls.map((call:any)=>{
+   const norm=normalizeClientPhone(call.number);
+   const contactName=canResolveContacts?(contactNames[norm]||contactNames[call.number]||''):'';
+   const typeLabel=call.type==='outgoing'?t('Outgoing','صادرة'):call.type==='missed'?t('Missed','فائتة'):call.type==='rejected'?t('Declined','مرفوضة'):t('Incoming','واردة');
+   return <article key={call.id} className="phone-call-item" data-call-type={call.type}>
+    <div>
+     {contactName&&<b>{contactName}</b>}
+     <span dir="ltr">{call.number||t('Unknown number','رقم غير معروف')}</span>
+     <small>{typeLabel} · {formatCallDuration(call.duration,ar)} · {new Date(call.date).toLocaleTimeString(ar?'ar':'en',{hour:'2-digit',minute:'2-digit'})}</small>
+    </div>
+    {call.number&&<button type="button" disabled={busy||!canDial} onClick={()=>{setDialNumber(call.number);void action(async()=>{const r=await command({type:'calls.dial',number:call.number});setMessage(r.needsTap?t('Dial request sent to your phone. Tap the notification on Android to open the dialer and confirm the call.','أُرسل طلب الاتصال إلى هاتفك. اضغط الإشعار على أندرويد لفتح لوحة الاتصال وتأكيد المكالمة.'):t('Number opened in your phone dialer. Confirm the call on Android.','فُتح الرقم في لوحة اتصال الهاتف. أكّد المكالمة من أندرويد.'));});}}>{t('Open in dialer','فتح في الهاتف')}</button>}
+   </article>;
+  })}{!busy&&!calls.length&&<p>{t('No call history found on the phone.','لا يوجد سجل مكالمات على الهاتف.')}</p>}</div>
+  {callsNext>0&&<button disabled={busy} onClick={()=>void action(()=>loadCalls(callsNext,true))}>{t('Load more','عرض المزيد')}</button>}
+ </>}
+ <form className="phone-call-dial" onSubmit={event=>{event.preventDefault();void action(async()=>{const number=dialNumber.trim();if(!number)return;const r=await command({type:'calls.dial',number});setMessage(r.needsTap?t('Dial request sent to your phone. Tap the notification on Android to open the dialer and confirm the call.','أُرسل طلب الاتصال إلى هاتفك. اضغط الإشعار على أندرويد لفتح لوحة الاتصال وتأكيد المكالمة.'):t('Number opened in your phone dialer. Confirm the call on Android.','فُتح الرقم في لوحة اتصال الهاتف. أكّد المكالمة من أندرويد.'));});}}>
+  <input aria-label={t('Phone number to dial','رقم الهاتف للاتصال')} dir="ltr" value={dialNumber} onChange={event=>setDialNumber(event.target.value)} placeholder={t('Phone number (+15550100)','رقم الهاتف (+9665...)')} maxLength={32} disabled={busy||!canDial}/>
+  <button type="submit" disabled={busy||!canDial||!dialNumber.trim()}>{t('Open in phone dialer','فتح في لوحة اتصال الهاتف')}</button>
  </form>
  </>:tab==='apps'?<><div className="phone-app-toolbar"><label><Search size={15}/><input type="search" value={appQuery} onChange={e=>setAppQuery(e.target.value)} placeholder={t('Search phone apps','ابحث في تطبيقات الهاتف')}/></label><button disabled={busy||!connected||!can('phoneData')} onClick={()=>void action(()=>load('apps'))}><RefreshCw size={14}/>{t('Refresh','تحديث')}</button></div><p className="phone-notification-hint">{t('Opening an app requires Phone control. If MOHIVX is closed on the phone, tap its open request there.','يتطلب فتح التطبيق صلاحية التحكم بالهاتف. إذا كان MOHIVX مغلقًا على الهاتف، اضغط طلب الفتح الذي يصلك عليه.')}{!can('phoneControl')&&<span> {t('Enable Phone control in connection permissions.','فعّل «التحكم بالهاتف» في صلاحيات الاتصال.')}</span>}</p><div className="phone-app-grid">{phoneApps.map((item:any)=><button key={item.packageName} disabled={busy||!connected||!can('phoneControl')} onClick={()=>void action(async()=>{const r=await command({type:'apps.launch',packageName:item.packageName});setMessage(r.needsTap?t('Open request sent to your phone. Tap it to continue.','أُرسل طلب الفتح إلى هاتفك. اضغط عليه للمتابعة.'):t('App opened on your phone.','فُتح التطبيق على هاتفك.'));})}><AppWindow size={19}/><span>{item.name}</span><small>{item.packageName}</small></button>)}{!busy&&!phoneApps.length&&<p>{items.length?t('No apps match this search.','لا توجد تطبيقات تطابق البحث.'):t('No launchable apps found.','لم يتم العثور على تطبيقات قابلة للفتح.')}</p>}</div></>:<><div className="phone-file-toolbar"><button disabled={busy||!connected||!can('phoneData')} onClick={()=>void action(()=>load(tab,parent))}><RefreshCw size={14}/>{t('Refresh','تحديث')}</button>{trail.length>0&&<button disabled={busy} onClick={()=>{const copy=trail.slice(0,-1);setTrail(copy);void action(()=>load(tab,copy.at(-1)?.id||''));}}>{t('Back','رجوع')}</button>}<span>{trail.at(-1)?.name||t(tab==='photos'?'Photos':'Shared folder',tab==='photos'?'الصور':'المجلد المشترك')}</span></div>
  <div className={tab==='photos'?'phone-photo-grid':'phone-files'}>{items.map(item=><button key={item.id} disabled={busy} onClick={()=>void action(async()=>{if(item.directory){setTrail(old=>[...old,{id:item.id,name:item.name}]);await load(tab,item.id);}else await invoke('phone-file-save',{device,id:item.id,name:item.name,size:item.size});})}>{item.thumbnail?<img src={item.thumbnail} alt=""/>:<Folder size={22}/>}<span>{item.name}</span>{!item.directory&&<small>{Math.ceil((item.size||0)/1024)} KB</small>}</button>)}</div>{next>0&&<button disabled={busy} onClick={()=>void action(()=>load(tab,parent,next,true))}>{t('Load more','عرض المزيد')}</button>}</>}

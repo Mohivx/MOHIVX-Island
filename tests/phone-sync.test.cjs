@@ -60,6 +60,64 @@ test('SMS history and sending require separate phoneMessages permission, validat
  s.exchange(d,{});
  await assert.rejects(revokedSend,/revoked/);
 });
+test('contacts resolution and call history/dialer use independent phoneContacts and phoneCalls permissions, validate inputs, sanitize results, and reject on revocation',async()=>{
+ const s=new PhoneSync(),d={id:'calls-phone',capabilities:['phoneData','phoneMessages']};
+ s.exchange(d,{status:{contactsRead:true,callsRead:true}});
+ assert.equal(s.snapshot(d.id).status.contactsRead,true);
+ assert.equal(s.snapshot(d.id).status.callsRead,true);
+ await assert.rejects(s.request(d,{type:'contacts.resolve',numbers:['+15550100']}),/permission/);
+ await assert.rejects(s.request(d,{type:'calls.list',offset:0}),/permission/);
+ await assert.rejects(s.request(d,{type:'calls.dial',number:'+15550100'}),/permission/);
+
+ // Enabling phoneCalls alone permits calls.list and calls.dial, but NOT contacts.resolve
+ d.capabilities=['phoneCalls'];
+ await assert.rejects(s.request(d,{type:'contacts.resolve',numbers:['+15550100']}),/permission/);
+ await assert.rejects(s.request(d,{type:'calls.list',offset:-1}),/Invalid call history page/);
+ await assert.rejects(s.request(d,{type:'calls.list',offset:10001}),/Invalid call history page/);
+ await assert.rejects(s.request(d,{type:'calls.dial',number:'not-a-number'}),/valid phone number to dial/);
+
+ const callsPromise=s.request(d,{type:'calls.list',offset:0});
+ let commands=s.exchange(d,{}).commands;
+ assert.equal(commands[0].type,'calls.list');
+ s.exchange(d,{results:[{id:commands[0].id,value:{next:60,items:[
+  {id:'901',number:'+15550100\u0000',type:'incoming',date:1700000010000,duration:125,name:'MustBeIgnored'},
+  {id:'902',number:'-1',type:'missed',date:1700000020000,duration:0},
+  {id:'0',number:'+15550199',type:'outgoing',date:100,duration:10},
+  {id:'bad',number:'+15550199',date:100,duration:10}
+ ]}}]});
+ const callsPage=await callsPromise;
+ assert.equal(callsPage.next,60);
+ assert.deepEqual(callsPage.items,[
+  {id:'901',number:'+15550100',type:'incoming',date:1700000010000,duration:125},
+  {id:'902',number:'',type:'missed',date:1700000020000,duration:0}
+ ]);
+ assert.equal('name' in callsPage.items[0],false,'calls.list must never leak cached contact names');
+
+ const dialPromise=s.request(d,{type:'calls.dial',number:'\u200e+٩٦٦ (٥٥) ٠١٠-٠٠٠٠\u200f'});
+ commands=s.exchange(d,{}).commands;
+ assert.equal(commands[0].type,'calls.dial');
+ assert.equal(commands[0].number,'+966550100000');
+ s.exchange(d,{results:[{id:commands[0].id,value:{opened:true,needsTap:false}}]});
+ assert.deepEqual(await dialPromise,{opened:true,needsTap:false});
+
+ // Enabling phoneContacts alone permits contacts.resolve, but NOT calls.list or calls.dial
+ d.capabilities=['phoneContacts'];
+ await assert.rejects(s.request(d,{type:'calls.list',offset:0}),/permission/);
+ await assert.rejects(s.request(d,{type:'calls.dial',number:'+15550100'}),/permission/);
+ await assert.rejects(s.request(d,{type:'contacts.resolve',numbers:[]}),/1–60 valid phone numbers/);
+ await assert.rejects(s.request(d,{type:'contacts.resolve',numbers:['bad']}),/1–60 valid phone numbers/);
+
+ const resolvePromise=s.request(d,{type:'contacts.resolve',numbers:['+1 (555) 0100','+15550100','\u200e+٩٦٦ ٥٥ ٠١٠ ٠٠٠٠\u200f']});
+ commands=s.exchange(d,{}).commands;
+ assert.deepEqual(commands[0].numbers,['+15550100','+966550100000']);
+ s.exchange(d,{results:[{id:commands[0].id,value:{contacts:{'+15550100':'Alice Smith\u0000','+966550100000':'أحمد','bad-key':'Ignored','+15550999':'\u0007Control'}}}]});
+ assert.deepEqual(await resolvePromise,{contacts:{'+15550100':'Alice Smith','+966550100000':'أحمد'}});
+
+ const revokedResolve=s.request(d,{type:'contacts.resolve',numbers:['+15550100']});
+ d.capabilities=[];
+ s.exchange(d,{});
+ await assert.rejects(revokedResolve,/revoked/);
+});
 test('output meter rejects malformed levels and clamps native values without retaining audio',()=>{assert.deepEqual(normalizeMeter({available:true,peak:20,left:NaN,right:-3}),{available:true,peak:1,left:0,right:0});assert.deepEqual(normalizeMeter(null),{available:false,peak:0,left:0,right:0});});
 test('encrypted phone sync protects notifications, gates agent requests, and stops accepting a revoked device',async t=>{
  const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),https=require('node:https');

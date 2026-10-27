@@ -3,4 +3,6 @@
     <string name="phone_control_description">Allow your paired PC to tap, swipe and type on this phone only while you enable phone control and share its screen. You can stop at any time. Locked phones and password fields cannot be controlled.</string>
     <string name="phone_app_open_title">Open app on phone</string>
     <string name="phone_app_open_text">Tap to open %1$s</string>
+    <string name="phone_dial_title">Open number in dialer</string>
+    <string name="phone_dial_text">Tap to review and dial %1$s</string>
 </resources>
