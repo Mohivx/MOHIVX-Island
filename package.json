@@ -1,7 +1,7 @@
 {
   "name": "mohivx-island",
   "private": true,
-  "version": "1.1.4",
+  "version": "1.1.5",
   "description": "MOHIVX Island — Premium Desktop Command Center",
   "author": "MOHIVX",
   "main": "electron/main.cjs",
@@ -27,6 +27,7 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "src/components/phonePlacement.mjs",
       "build/icon.ico",
       "bin/**/*",
       "!bin/cloudflared.exe",

@@ -252,4 +252,7 @@ test('docking preserves user-resized viewer dimensions and repositions window to
  assert.equal(setBoundsArgs.x,8);
  assert.equal(setBoundsArgs.width,540);
  assert.equal(setBoundsArgs.height,910);
+ const pkg=JSON.parse(require('node:fs').readFileSync(require('node:path').join(__dirname,'../package.json'),'utf8'));
+ assert.equal(pkg.build?.files?.includes('src/components/phonePlacement.mjs'),true);
+ assert.equal(Boolean(pkg.build?.files?.includes('src/**/*')),false);
 });
