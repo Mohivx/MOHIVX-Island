@@ -21,7 +21,7 @@ export function PhoneViewer(){
   queueRef.current=createPhoneInputQueue(
    async(action:unknown)=>ipc?.invoke('phone-input',{device:stateRef.current.device,input:action}),
    {
-    maxSize:32,
+    maxSize:32,minMoveInterval:25,
     canAccept:()=>Boolean(stateRef.current.control&&stateRef.current.available&&stateRef.current.live),
     onError:(e:unknown)=>{
      const msg=e instanceof Error?e.message:String(e);
@@ -75,7 +75,7 @@ export function PhoneViewer(){
  <div className="phone-viewer-canvas" data-fill={fill} data-control={control} tabIndex={0}
    onKeyDown={keyDown}
    onPointerDown={e=>{if(!control||!frame||!e.isPrimary)return;const p=phonePoint(e.clientX,e.clientY,e.currentTarget.getBoundingClientRect(),frame.width||0,frame.height||0,fill);if(!p)return;e.preventDefault();e.currentTarget.focus();keyboardCapture.current?.focus();e.currentTarget.setPointerCapture(e.pointerId);down.current={...p,at:performance.now()};}}
-  onPointerCancel={()=>{down.current=null;}}
+  onPointerCancel={()=>{down.current=null;}} onPointerLeave={()=>{if(down.current){down.current=null;queueRef.current?.clear('pointer-leave');}}} onBlur={()=>{down.current=null;}} onPointerMove={e=>{if(!control||!frame)return;const p=phonePoint(e.clientX,e.clientY,e.currentTarget.getBoundingClientRect(),frame.width||0,frame.height||0,fill);if(p)void input({type:'move',x:p.x,y:p.y});}}
   onPointerUp={e=>{const first=down.current;down.current=null;if(!first||!frame)return;const p=phonePoint(e.clientX,e.clientY,e.currentTarget.getBoundingClientRect(),frame.width||0,frame.height||0,fill);if(!p)return;const duration=performance.now()-first.at;void input(Math.hypot(p.x-first.x,p.y-first.y)<.015&&duration<600?{type:'tap',x:p.x,y:p.y}:{type:'swipe',x:first.x,y:first.y,endX:p.x,endY:p.y,duration});}}
   onWheel={e=>{if(!control||!frame||Date.now()-wheelAt.current<90||Math.abs(e.deltaY)<1)return;wheelAt.current=Date.now();e.stopPropagation();const p=phonePoint(e.clientX,e.clientY,e.currentTarget.getBoundingClientRect(),frame.width||0,frame.height||0,fill)||{x:.5,y:.5};const direction=e.deltaY>0?-1:1;void input({type:'swipe',x:p.x,y:Math.max(.25,Math.min(.75,p.y)),endX:p.x,endY:direction<0 ? .2 : .8,duration:220});}}>
    {live&&frame?.dataUrl?<img draggable={false} src={frame.dataUrl} alt={kind==='camera'?t('Live phone camera','كاميرا الهاتف المباشرة'):t('Live phone screen','شاشة الهاتف المباشرة')}/>:<div className="phone-viewer-empty"><Icon size={42}/><h2>{t('Waiting for your phone','بانتظار هاتفك')}</h2><p>{t('Start sharing from Phone in the Android app.','ابدأ المشاركة من قسم الهاتف في تطبيق أندرويد.')}</p></div>}

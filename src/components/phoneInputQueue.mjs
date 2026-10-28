@@ -71,13 +71,26 @@ export function createPhoneInputQueue(sendFn, options = {}) {
   const canAccept = typeof options.canAccept === 'function' ? options.canAccept : () => true;
   const onError = typeof options.onError === 'function' ? options.onError : null;
   const onClear = typeof options.onClear === 'function' ? options.onClear : null;
+  const minMoveInterval = Number.isFinite(options.minMoveInterval) && options.minMoveInterval > 0 ? options.minMoveInterval : 0;
 
   const queue = [];
   let epoch = 0;
   let activeItem = null;
   let draining = false;
+  let lastMoveSentAt = 0;
+  let moveThrottleTimer = null;
+  let bufferedMove = null;
 
   function settlePendingAsFalse() {
+    if (bufferedMove && !bufferedMove.settled) {
+      bufferedMove.settled = true;
+      bufferedMove.resolve(false);
+      bufferedMove = null;
+    }
+    if (moveThrottleTimer) {
+      clearTimeout(moveThrottleTimer);
+      moveThrottleTimer = null;
+    }
     while (queue.length > 0) {
       const item = queue.shift();
       if (item && !item.settled) {
@@ -90,6 +103,15 @@ export function createPhoneInputQueue(sendFn, options = {}) {
   function clear(reason = 'cleared') {
     epoch += 1;
     draining = false;
+    if (moveThrottleTimer) {
+      clearTimeout(moveThrottleTimer);
+      moveThrottleTimer = null;
+    }
+    if (bufferedMove && !bufferedMove.settled) {
+      bufferedMove.settled = true;
+      bufferedMove.resolve(false);
+      bufferedMove = null;
+    }
     if (activeItem && !activeItem.settled) {
       activeItem.settled = true;
       activeItem.resolve(false);
@@ -97,6 +119,25 @@ export function createPhoneInputQueue(sendFn, options = {}) {
     }
     settlePendingAsFalse();
     if (onClear) onClear(reason);
+  }
+
+  function flushBufferedMove() {
+    if (moveThrottleTimer) {
+      clearTimeout(moveThrottleTimer);
+      moveThrottleTimer = null;
+    }
+    if (!bufferedMove) return;
+    const item = bufferedMove;
+    bufferedMove = null;
+    if (item.epoch !== epoch || item.settled) return;
+    const last = queue.length > 0 ? queue[queue.length - 1] : null;
+    if (last && last.action?.type === 'move' && !last.settled) {
+      last.action = item.action;
+      item.settled = true;
+      item.resolve(true);
+    } else {
+      queue.push(item);
+    }
   }
 
   async function drain() {
@@ -130,6 +171,9 @@ export function createPhoneInputQueue(sendFn, options = {}) {
           if (!result || result.success === false) {
             throw new Error(result?.error || 'Phone input unavailable');
           }
+          if (item.action?.type === 'move') {
+            lastMoveSentAt = Date.now();
+          }
           item.settled = true;
           activeItem = null;
           item.resolve(true);
@@ -160,7 +204,42 @@ export function createPhoneInputQueue(sendFn, options = {}) {
     if (!action || typeof action !== 'object' || !canAccept()) {
       return Promise.resolve(false);
     }
-    const pendingCount = queue.length + (activeItem ? 1 : 0);
+    const isMove = action.type === 'move';
+
+    // Flush any buffered move before non-move actions (clicks/swipes/wheel/keys/text)
+    if (!isMove) {
+      flushBufferedMove();
+    } else {
+      // If there is already a pending move at the tail of the un-sent queue, coalesce into it!
+      const last = queue.length > 0 ? queue[queue.length - 1] : null;
+      if (last && last.action?.type === 'move' && !last.settled) {
+        last.action = action;
+        return Promise.resolve(true);
+      }
+
+      // If minMoveInterval is configured and recent move was sent, coalesce into bufferedMove
+      if (minMoveInterval > 0) {
+        const timeSince = Date.now() - lastMoveSentAt;
+        if (timeSince < minMoveInterval) {
+          const itemEpoch = epoch;
+          if (bufferedMove) {
+            bufferedMove.action = action;
+            return Promise.resolve(true);
+          }
+          return new Promise((resolve) => {
+            bufferedMove = { action, resolve, epoch: itemEpoch, settled: false };
+            const delay = Math.max(1, minMoveInterval - timeSince);
+            moveThrottleTimer = setTimeout(() => {
+              moveThrottleTimer = null;
+              flushBufferedMove();
+              void drain();
+            }, delay);
+          });
+        }
+      }
+    }
+
+    const pendingCount = queue.length + (activeItem ? 1 : 0) + (bufferedMove ? 1 : 0);
     if (pendingCount >= maxSize) {
       if (onError) onError(new Error('Phone input queue is full'), action);
       return Promise.resolve(false);
@@ -172,11 +251,17 @@ export function createPhoneInputQueue(sendFn, options = {}) {
     });
   }
 
+  function flush() {
+    flushBufferedMove();
+    void drain();
+  }
+
   return {
     enqueue,
+    flush,
     clear,
-    size: () => queue.length + (activeItem ? 1 : 0),
-    pending: () => queue.length,
+    size: () => queue.length + (activeItem ? 1 : 0) + (bufferedMove ? 1 : 0),
+    pending: () => queue.length + (bufferedMove ? 1 : 0),
     isBusy: () => Boolean(activeItem || draining),
   };
 }

@@ -40,7 +40,7 @@ class PhoneSyncService:Service(){
   val response=client.request("/api/phone-sync",body);if(!active)return false;lastSyncAt=System.currentTimeMillis();lastError="";if(includeProfile)lastProfileAt=lastSyncAt;if(includeNotifications){lastNotificationRevision=notifications.first;lastNotificationAt=lastSyncAt};if(clipboard!=null)PhoneClipboard.markSynced(clipboard.optString("hash"));response.optJSONArray("ack")?.let{a->for(i in 0 until a.length())results.remove(a.optString(i))}
   response.optJSONArray("commands")?.let{a->for(i in 0 until a.length()){val c=a.getJSONObject(i);val id=c.getString("id");if(results.containsKey(id)||c.optLong("expires")<response.optLong("serverAt",System.currentTimeMillis()))continue;val r=JSONObject().put("id",id);try{r.put("value",execute(c))}catch(e:Exception){r.put("error",e.message?:"Phone request failed.")};results[id]=r;while(results.size>24)results.remove(results.keys.first())}}
   notifyAgents(response.optJSONArray("requests")?:JSONArray());return (response.optJSONArray("commands")?.length()?:0)>0
- }catch(e:Exception){lastError=e.message?:"Connection unavailable";return false}}
+ }catch(e:Exception){lastError=e.message?:"Connection unavailable";PhoneControlService.hidePointer();return false}}
  private fun execute(c:JSONObject):JSONObject {
   val type=c.getString("type");if(type=="apps.list")return apps.list();if(type=="apps.launch")return apps.launch(c.getString("packageName"));if(type=="notifications.reply")return PhoneNotifications.reply(c.optString("notificationId"),c.optString("text"));if(type=="media.control")return PhoneNotifications.controlMedia(c);if(type.startsWith("clipboard."))return PhoneClipboard.execute(this,c);if(type.startsWith("messages."))return PhoneMessages.execute(this,c);if(type=="contacts.resolve"||type.startsWith("calls."))return PhoneCalls.execute(this,c);if(type.startsWith("files.")||type=="photos.list")return files.execute(c)
   if(type=="input")return PhoneControlService.execute(c.getJSONObject("input"))
@@ -56,6 +56,6 @@ class PhoneSyncService:Service(){
   val text=(r.optString("description").ifBlank{r.optString("title")}).take(700)
   manager().notify(id,builder("phone-requests").setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle("MOHIVX Island · "+r.optString("agent","Agent request")).setContentText(text).setStyle(Notification.BigTextStyle().bigText(text)).setVisibility(Notification.VISIBILITY_PRIVATE).setAutoCancel(true).setContentIntent(pending(Intent(this,MainActivity::class.java).putExtra("openAgents",true),id)).build())
  };for(id in agentIds-current)manager().cancel(id);agentIds.clear();agentIds.addAll(current)}
- override fun onDestroy(){active=false;worker.shutdownNow();for(id in agentIds)manager().cancel(id);super.onDestroy()}
+ override fun onDestroy(){active=false;worker.shutdownNow();PhoneControlService.hidePointer();for(id in agentIds)manager().cancel(id);super.onDestroy()}
  override fun onBind(intent:Intent?):IBinder?=null
 }

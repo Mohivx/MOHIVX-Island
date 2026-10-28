@@ -1,5 +1,6 @@
 export type PhoneInputQueue = {
   enqueue(action: unknown): Promise<boolean>;
+  flush(): void;
   clear(reason?: string): void;
   size(): number;
   pending(): number;
@@ -8,6 +9,7 @@ export type PhoneInputQueue = {
 
 export type PhoneInputQueueOptions = {
   maxSize?: number;
+  minMoveInterval?: number;
   canAccept?: () => boolean;
   onError?: (error: unknown, action: unknown) => void;
   onClear?: (reason: string) => void;

@@ -61,7 +61,7 @@ class PhoneCaptureService:Service() {
         if(Build.VERSION.SDK_INT>=29)startForeground(44,notification,types) else startForeground(44,notification)
     }
     private fun stop(kind:String){
-        sessions.remove(kind)?.close();changed()
+        sessions.remove(kind)?.close();changed();if(kind=="screen")PhoneControlService.hidePointer()
         if(sessions.isEmpty()){stopForeground(true);if(!destroying)stopSelf()}else if(!destroying)foreground()
     }
     private fun fail(kind:String,error:Exception){main.post{if(sessions.containsKey(kind)){lastError=error.message ?: "Sharing stopped";stop(kind)}}}
