@@ -18,11 +18,13 @@
 
 - **Windows installer:** MOHIVX-Island-Setup-1.1.8.exe
 - **Windows portable:** MOHIVX Island 1.1.8.exe
-- **Android companion:** MOHIVX-Island-Companion-1.1.8.apk
+- **Android companion preview (debug-signed, separate app ID):** MOHIVX-Island-Companion-1.1.8-preview.apk
+- **Public Android update APK:** requires the release signing key; it is not part of this preview build.
 
 - **مثبّت Windows:** MOHIVX-Island-Setup-1.1.8.exe
 - **نسخة Windows المحمولة:** MOHIVX Island 1.1.8.exe
-- **تطبيق Android المرافق:** MOHIVX-Island-Companion-1.1.8.apk
+- **معاينة تطبيق Android (بتوقيع التطوير وتُثبّت كتطبيق منفصل):** MOHIVX-Island-Companion-1.1.8-preview.apk
+- **حزمة تحديث Android العامة:** تتطلب مفتاح توقيع الإصدار، ولم تُبنَ ضمن هذه المعاينة.
 
 ## License | الترخيص
 
