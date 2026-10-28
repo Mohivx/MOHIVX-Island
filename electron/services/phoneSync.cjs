@@ -334,7 +334,7 @@ class PhoneSync {
         if(!n.id)continue;const fingerprint=crypto.createHash('sha256').update(JSON.stringify([n.app,n.title,n.text,n.at])).digest('hex');
         const previous=s.seen.get(n.id);s.seen.delete(n.id);s.seen.set(n.id,fingerprint);
         const age=sentAt-n.at;
-        if(previous!==fingerprint&&n.at>0&&age<=30000&&age>=-5000)try{this.onNotification({id:'phone:'+crypto.createHash('sha256').update(device.id+':'+n.id+':'+fingerprint).digest('hex'),source:'phone',app:n.app+(device.name?' · '+device.name:''),title:n.title,body:n.text,time:this.now()-Math.max(0,age)},device);}catch{}
+         if(previous!==fingerprint&&n.at>0&&age<=30000&&age>=-5000)try{this.onNotification({id:'phone:'+crypto.createHash('sha256').update(device.id+':'+n.id+':'+fingerprint).digest('hex'),source:'phone',app:n.app+(device.name?' · '+device.name:''),title:n.title,body:n.text,time:this.now()-Math.max(0,age),...(n.replyAvailable===true?{phoneDeviceId:device.id,phoneNotificationId:n.id,phoneReplyAvailable:true}:{})},device);}catch{}
       }
       while(s.seen.size>256)s.seen.delete(s.seen.keys().next().value);
     }else{s.notifications=[];s.seen.clear();}

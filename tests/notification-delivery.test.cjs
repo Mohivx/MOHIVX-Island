@@ -9,6 +9,14 @@ test('MOHIVX reminders reach the island while native banners remain off unless e
  settings.windowsNotificationsEnabled=false;deliver({source:'windows',title:'Hidden',body:''});assert.equal(island.length,3);
  settings.islandNotificationsEnabled=false;deliver({title:'Windows only',body:''});assert.equal(island.length,3);assert.equal(windows.length,2);
 });
+test('phone quick-reply routing survives delivery only for a reply-capable phone notice',()=>{
+ let settings={islandNotificationsEnabled:true,windowsNotificationsEnabled:true};const island=[];
+ const deliver=createNotificationDelivery({getSettings:()=>settings,sendToIsland:n=>island.push(n),showWindowsToast:()=>{}});
+ deliver({source:'phone',id:'phone-1',app:'Messages · A16',title:'Hello',body:'Hi',phoneDeviceId:'device-1',phoneNotificationId:'android-key',phoneReplyAvailable:true});
+ deliver({source:'phone',id:'phone-2',app:'Calendar',title:'Reminder',body:'Soon',phoneDeviceId:'device-1',phoneNotificationId:'calendar-key',phoneReplyAvailable:false});
+ deliver({source:'windows',id:'win-1',app:'Messages',title:'Hello',body:'Hi',phoneDeviceId:'device-1',phoneNotificationId:'android-key',phoneReplyAvailable:true});
+ assert.equal(island.length,3);assert.deepEqual([island[0].phoneDeviceId,island[0].phoneNotificationId,island[0].phoneReplyAvailable],['device-1','android-key',true]);assert.equal(Object.hasOwn(island[1],'phoneNotificationId'),false);assert.equal(Object.hasOwn(island[2],'phoneReplyAvailable'),false);
+});
 test('notification queue keeps active questions in front, resumes after them, deduplicates and expires stale cards',async()=>{
  const {IslandNoticeQueue}=await import('../src/hooks/islandNotices.mjs');let now=1000,callback;const events=[];const q=new IslandNoticeQueue(n=>events.push(n),{now:()=>now,setTimer:fn=>{callback=fn;return 1;},clearTimer:()=>{callback=null;}});
  const notice={id:'1',source:'windows',app:'Messages',title:'A',body:'B',time:1000};q.enqueue(notice);assert.equal(q.current.title,'A');q.setBlocked(true);assert.equal(q.current,null);q.enqueue(notice);q.enqueue({...notice,id:'2',title:'Next'});q.setBlocked(false);assert.equal(q.current.title,'A');callback();assert.equal(q.current.title,'Next');q.pause(true);assert.equal(callback,null);q.clear();q.enqueue({...notice,id:'3'});assert.equal(typeof callback,'function','clearing while paused must reset the timer state');q.setBlocked(true);now+=130000;q.setBlocked(false);assert.equal(q.current,null,'old cards must not replay after a long approval');q.clear();
