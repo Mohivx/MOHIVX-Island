@@ -128,6 +128,7 @@ class GeminiAgent {
     this.scheduleAction = options.scheduleAction;
     this.getSchedules = options.getSchedules;
     this.researchWeb = options.researchWeb;
+    this.onToolEvent = options.onToolEvent || (() => {});
   }
 
   log(msg) {
@@ -178,7 +179,10 @@ IMPORTANT AGENT INSTRUCTIONS:
 
   // Safe Native Tool Implementations on Windows
   async executeTool(toolName, args, options={}) {
+    if (options.isActive && !options.isActive()) throw Error('Canceled.');
     this.log(`Executing action: ${toolName}`);
+    const eventBase={requestId:options.requestId||'',tool:toolName,args:args||{}};
+    try { this.onToolEvent({...eventBase,phase:'start',at:Date.now()}); } catch {}
 
     // Trigger visual Ghost Cursor effect if callback is provided
     if (this.onGhostCursor) {
@@ -187,17 +191,19 @@ IMPORTANT AGENT INSTRUCTIONS:
       } catch (e) {}
     }
 
-    if(this.actionRegistry?.has(toolName))return this.actionRegistry.get(toolName)(args,options);
-    switch (toolName) {
-      case 'research_web': return this.researchWeb ? this.researchWeb(args.query) : { success: false, error: 'Web research unavailable' };
-      case 'schedule_action': return this.scheduleAction ? this.scheduleAction(args) : { success: false, error: 'Scheduler unavailable' };
-      case 'get_scheduled_actions': return this.getSchedules ? this.getSchedules() : { success: false, error: 'Scheduler unavailable' };
+    let result;
+    try {
+    if(this.actionRegistry?.has(toolName)) result=await this.actionRegistry.get(toolName)(args,options);
+    else switch (toolName) {
+      case 'research_web': result=this.researchWeb ? await this.researchWeb(args.query) : { success: false, error: 'Web research unavailable' }; break;
+      case 'schedule_action': result=this.scheduleAction ? await this.scheduleAction(args) : { success: false, error: 'Scheduler unavailable' }; break;
+      case 'get_scheduled_actions': result=this.getSchedules ? await this.getSchedules() : { success: false, error: 'Scheduler unavailable' }; break;
       case 'open_application': {
         const rawName = (args.appName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
         const target = APP_MAP[rawName] || args.appName;
         const extra = args.extraArgs ? ` "${args.extraArgs}"` : '';
 
-        return new Promise((resolve) => {
+        result=await new Promise((resolve) => {
           exec(`start "" ${target}${extra}`, { windowsHide: true }, (err) => {
             if (err) {
               // Fallback to powershell Start-Process
@@ -212,7 +218,7 @@ IMPORTANT AGENT INSTRUCTIONS:
               resolve({ success: true, message: `Application ${args.appName} opened.` });
             }
           });
-        });
+        }); break;
       }
 
       case 'control_media': {
@@ -228,14 +234,14 @@ IMPORTANT AGENT INSTRUCTIONS:
 
         if (vkey > 0) {
           const psCommand = `powershell -NoProfile -Command "$w=Add-Type -MemberDefinition '[DllImport(\\"user32.dll\\")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, uint dwExtraInfo);' -Name W32 -PassThru; $w::keybd_event(${vkey}, 0, 0, 0); $w::keybd_event(${vkey}, 0, 2, 0);"`;
-          return new Promise((resolve) => {
+          result=await new Promise((resolve) => {
             exec(psCommand, { windowsHide: true }, (err) => {
               if (err) resolve({ success: false, error: err.message });
               else resolve({ success: true, actionExecuted: action });
             });
           });
-        }
-        return { success: false, error: 'Unknown media action' };
+        } else result={ success: false, error: 'Unknown media action' };
+        break;
       }
 
       case 'search_web': {
@@ -249,12 +255,12 @@ IMPORTANT AGENT INSTRUCTIONS:
           url = `https://www.amazon.com/s?k=${query}`;
         }
 
-        return new Promise((resolve) => {
+        result=await new Promise((resolve) => {
           exec(`start "" "${url}"`, { windowsHide: true }, (err) => {
             if (err) resolve({ success: false, error: err.message });
             else resolve({ success: true, searchedUrl: url, query: args.query });
           });
-        });
+        }); break;
       }
 
       case 'get_system_status': {
@@ -265,19 +271,25 @@ IMPORTANT AGENT INSTRUCTIONS:
         const cpus = os.cpus();
         const cpuModel = cpus.length ? cpus[0].model.trim() : 'Unknown CPU';
 
-        return {
+        result={
           success: true,
           cpuModel,
           cpuCores: cpus.length,
           memoryUsed: `${usedMemMb} MB / ${totalMemMb} MB (${Math.round((usedMemMb / totalMemMb) * 100)}%)`,
           systemUptime: `${uptimeHours} hours`,
           platform: 'Windows 10/11'
-        };
+        }; break;
       }
 
       default:
-        return { success: false, error: `Tool ${toolName} not implemented yet.` };
+        result={ success: false, error: `Tool ${toolName} not implemented yet.` };
     }
+    } catch(error) {
+      try { this.onToolEvent({...eventBase,phase:'end',at:Date.now(),success:false,result:{success:false,error:error?.message||'Action failed.'}}); } catch {}
+      throw error;
+    }
+    try { this.onToolEvent({...eventBase,phase:'end',at:Date.now(),success:result?.success!==false,result:result&&typeof result==='object'?{success:result.success,error:result.error,message:result.message}:undefined}); } catch {}
+    return result;
   }
 
   // Raw HTTPS Request to Google Gemini API with smart fallback
@@ -340,8 +352,109 @@ IMPORTANT AGENT INSTRUCTIONS:
     });
   }
 
+  /**
+   * Stream a Gemini response while keeping the return shape compatible with
+   * generateContent. This lets the UI show the answer and the current action
+   * as they arrive instead of appearing frozen until the request completes.
+   */
+  _makeStreamRequest(apiKey, payload, model, { onTextDelta = () => {}, isActive = () => true } = {}) {
+    return new Promise((resolve, reject) => {
+      const dataString = JSON.stringify(payload);
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`;
+      const chunks = [];
+      let buffer = '';
+      let settled = false;
+      const fail = error => { if (!settled) { settled = true; reject(error instanceof Error ? error : new Error(String(error))); } };
+      const req = https.request(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'text/event-stream',
+          'x-goog-api-key': apiKey.trim(),
+          'Content-Length': Buffer.byteLength(dataString)
+        },
+        timeout: 60000
+      }, res => {
+        res.setEncoding('utf8');
+        const consume = line => {
+          const value = line.trim();
+          if (!value || value.startsWith(':') || !value.startsWith('data:')) return;
+          const json = value.slice(5).trim();
+          if (!json || json === '[DONE]') return;
+          try {
+            const parsed = JSON.parse(json);
+            chunks.push(parsed);
+            const parts = parsed.candidates?.[0]?.content?.parts || [];
+            for (const part of parts) {
+              if (typeof part.text === 'string' && part.text) {
+                try { onTextDelta(part.text); } catch {}
+              }
+            }
+          } catch (error) {
+            fail(new Error(`Failed to parse Gemini stream: ${json.slice(0, 160)}`));
+          }
+        };
+        res.on('data', data => {
+          if (!isActive()) { req.destroy(); fail(new Error('Canceled.')); return; }
+          buffer += data;
+          const lines = buffer.split(/\r?\n/);
+          buffer = lines.pop() || '';
+          lines.forEach(consume);
+        });
+        res.on('end', () => {
+          if (settled) return;
+          if (buffer) consume(buffer);
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            const error = chunks.find(item => item.error)?.error?.message || `HTTP ${res.statusCode}`;
+            fail(new Error(error));
+            return;
+          }
+          settled = true;
+          resolve(this._mergeStreamChunks(chunks));
+        });
+        res.on('error', fail);
+      });
+      req.on('error', fail);
+      req.on('timeout', () => { req.destroy(); fail(new Error('Connection to Google Gemini timed out.')); });
+      req.write(dataString);
+      req.end();
+    });
+  }
+
+  _mergeStreamChunks(chunks) {
+    const parts = [];
+    const calls = [];
+    for (const chunk of chunks) {
+      for (const part of chunk.candidates?.[0]?.content?.parts || []) {
+        if (typeof part.text === 'string' && part.text) parts.push({ text: part.text });
+        if (part.functionCall) {
+          const call = part.functionCall;
+          const index = calls.findIndex(item => item.name === call.name);
+          if (index < 0) calls.push({ name: call.name, args: { ...(call.args || {}) } });
+          else calls[index].args = { ...calls[index].args, ...(call.args || {}) };
+        }
+      }
+    }
+    return { candidates: [{ content: { role: 'model', parts: [...parts, ...calls.map(functionCall => ({ functionCall }))] } }] };
+  }
+
+  async callGeminiApiStream(apiKey, payload, options = {}) {
+    const candidateModels = ['gemini-flash-latest', 'gemini-2.5-flash'];
+    let lastError = null;
+    for (const model of candidateModels) {
+      try { return await this._makeStreamRequest(apiKey, payload, model, options); }
+      catch (error) {
+        lastError = error;
+        if (!/not found|not supported|404|unavailable model/i.test(error.message || '')) throw error;
+      }
+    }
+    throw lastError || new Error('All Gemini streaming models failed.');
+  }
+
   // The Main Agent Execution Function
-  async runPrompt(userPrompt, settings = {}, conversationHistory = []) {
+  async runPrompt(userPrompt, settings = {}, conversationHistory = [], options = {}) {
+    const isActive=options.isActive||(()=>true),requestId=options.requestId||'',onProgress=options.onProgress||(()=>{}),onTextDelta=options.onTextDelta||(()=>{});
+    if(!isActive()) throw Error('Canceled.');
     const apiKeys = [settings.geminiKey, settings.geminiKey2].map(key => (key || '').trim()).filter(Boolean);
     if (!apiKeys.length) {
       return {
@@ -391,8 +504,10 @@ IMPORTANT AGENT INSTRUCTIONS:
 
     try {
       this.log('Sending desktop assistant request.');
+      try { onProgress({phase:'thinking',requestId}); } catch {}
       let apiKey=apiKeys[0],response;
-      try { response=await this.callGeminiApi(apiKey,payload); } catch(error) { if(apiKeys.length<2||!/(?:400|401|403|429)|api.?key|quota|unauthori[sz]ed|forbidden/i.test(error.message||''))throw error; apiKey=apiKeys[1]; response=await this.callGeminiApi(apiKey,payload); }
+      if(!isActive()) throw Error('Canceled.');
+      try { response=await this.callGeminiApiStream(apiKey,payload,{isActive,onTextDelta}); } catch(error) { if(apiKeys.length<2||!/(?:400|401|403|429)|api.?key|quota|unauthori[sz]ed|forbidden/i.test(error.message||''))throw error; apiKey=apiKeys[1]; response=await this.callGeminiApiStream(apiKey,payload,{isActive,onTextDelta}); }
 
       const candidate = response.candidates && response.candidates[0];
       if (!candidate || !candidate.content) {
@@ -414,7 +529,9 @@ IMPORTANT AGENT INSTRUCTIONS:
         for (const part of functionCalls) {
           const fn = part.functionCall;
           let result;
-          try { result = await this.executeTool(fn.name, fn.args || {}); } catch (error) { result = { success: false, error: error.message }; }
+          if(!isActive()) throw Error('Canceled.');
+          try { onProgress({phase:'tool',requestId,tool:fn.name,args:fn.args||{}}); } catch {}
+          try { result = await this.executeTool(fn.name, fn.args || {}, {requestId,isActive}); } catch (error) { result = { success: false, error: error.message }; }
           toolsExecuted.push({ tool: fn.name, args: fn.args, result });
 
           responseParts.push({
@@ -442,7 +559,8 @@ IMPORTANT AGENT INSTRUCTIONS:
           }
         };
 
-        const secondResponse = await this.callGeminiApi(apiKey, secondPayload);
+        if(!isActive()) throw Error('Canceled.');
+        const secondResponse = await this.callGeminiApiStream(apiKey, secondPayload,{isActive,onTextDelta});
         const secondCandidate = secondResponse.candidates && secondResponse.candidates[0];
         let finalText = '';
 

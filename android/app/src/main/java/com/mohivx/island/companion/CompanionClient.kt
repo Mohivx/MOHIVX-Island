@@ -25,7 +25,7 @@ import javax.net.ssl.X509TrustManager
 class CompanionClient(context:Context,private val testEndpoint:PcEndpoint?=null) {
  companion object {
   private val transportLock=Any()
-  private val mediaLocks=mapOf("camera" to Any(),"screen" to Any(),"mic" to Any())
+  private val mediaLocks=mapOf("camera" to Any(),"screen" to Any(),"mic" to Any(),"audio" to Any())
  }
  @Volatile private var mediaLanes=false
  private var cachedPin=""

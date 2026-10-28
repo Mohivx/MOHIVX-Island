@@ -44,7 +44,7 @@ class PhoneSyncService:Service(){
  private fun execute(c:JSONObject):JSONObject {
   val type=c.getString("type");if(type=="apps.list")return apps.list();if(type=="apps.launch")return apps.launch(c.getString("packageName"));if(type=="notifications.reply")return PhoneNotifications.reply(c.optString("notificationId"),c.optString("text"));if(type=="media.control")return PhoneNotifications.controlMedia(c);if(type.startsWith("clipboard."))return PhoneClipboard.execute(this,c);if(type.startsWith("messages."))return PhoneMessages.execute(this,c);if(type=="contacts.resolve"||type.startsWith("calls."))return PhoneCalls.execute(this,c);if(type.startsWith("files.")||type=="photos.list")return files.execute(c)
   if(type=="input")return PhoneControlService.execute(c.getJSONObject("input"))
-  val kind=c.optString("kind");require(kind in listOf("camera","mic","screen"))
+  val kind=c.optString("kind");require(kind in listOf("camera","mic","screen","audio"))
   if(type=="capture.stop"){if(PhoneCaptureService.active.contains(kind))startService(Intent(this,PhoneCaptureService::class.java).setAction(PhoneCaptureService.STOP).putExtra("kind",kind));manager().cancel(3200+kind.hashCode());return JSONObject().put("stopped",true)}
   require(type=="capture.start")
   if(activityVisible){sendBroadcast(Intent(CAPTURE).setPackage(packageName).putExtra("kind",kind));return JSONObject().put("needsTap",false)}

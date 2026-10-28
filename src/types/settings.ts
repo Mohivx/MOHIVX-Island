@@ -111,6 +111,7 @@ export interface MohivxSettings {
   musicPresentation: 'off' | 'compact' | 'disc' | 'waveform';
   musicTheme: 'off' | 'player' | 'edge-bars' | 'classic' | 'split';
   musicSizing: 'expand' | 'fixed';
+  mediaFollowAccent: boolean;
   animationSpeed: 'instant' | 'fast' | 'smooth' | 'cinematic';
   fontFamily: 'system-ui' | 'inter' | 'cairo' | 'sf-pro';
   fontSize: 'small' | 'medium' | 'large';
@@ -258,6 +259,7 @@ export const DEFAULT_MOHIVX_SETTINGS: MohivxSettings = {
   musicPresentation: 'compact',
   musicTheme: 'edge-bars',
   musicSizing: 'fixed',
+  mediaFollowAccent: false,
   animationSpeed: 'smooth',
   fontFamily: 'system-ui',
   fontSize: 'medium',

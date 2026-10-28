@@ -60,6 +60,7 @@ import { LoadoutHub } from './LoadoutHub';
 import { ScheduledActions } from './ScheduledActions';
 import { type MohivxSettings, DEFAULT_MOHIVX_SETTINGS } from '../types/settings';
 import { SOUL_SKINS, VOICES } from '../constants';
+import { extractMediaAccent } from '../hooks/mediaAccent.mjs';
 
 const isElectron = typeof window !== 'undefined' && Boolean((window as unknown as { require?: unknown }).require);
 const electron = isElectron ? (window as unknown as { require: (mod: string) => typeof import('electron') }).require('electron') : null;
@@ -226,7 +227,13 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
         setTimeout(() => setNotchNotification(null), 4500);
       };
       electron.ipcRenderer.on('app-launch-failed', launchFailed);
-      const openTab = (_: unknown, tab: TabType) => { if (['phone','agents','controls', 'today', 'stats', 'clipboard', 'apps', 'wallpaper', 'power', 'ai'].includes(tab)) { setActiveTab(tab); transitionToStage('drawer'); } };
+      const openTab = (_: unknown, tab: TabType) => {
+        if (['phone','agents','controls', 'today', 'stats', 'clipboard', 'apps', 'wallpaper', 'power', 'ai'].includes(tab)
+          && appSettings.visibleTabs?.[tab] !== false) {
+          setActiveTab(tab);
+          transitionToStage('drawer');
+        }
+      };
       electron.ipcRenderer.on('open-island-tab', openTab);
       const collapse=()=>transitionToStage('collapsed');electron.ipcRenderer.on('collapse-island',collapse);
 
@@ -272,6 +279,7 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
   const [aiPrompt, setAiPrompt] = useState('');
   const [isAiThinking, setIsAiThinking] = useState(false);
   const [aiStatusMessage, setAiStatusMessage] = useState<string>('');
+  const [aiToolEvents, setAiToolEvents] = useState<Array<{requestId?:string;tool:string;phase:string;success?:boolean}>>([]);
   const aiWelcome = appLang === 'ar'
     ? 'مرحباً بك! أنا MOHIVX، روح جهازك ومساعدك الذكي. اطلب مني فتح تطبيق، أو البحث، أو اسألني أي سؤال.'
     : 'Hello! I am MOHIVX, your desktop companion. Ask me to open an app, search, or answer a question.';
@@ -327,6 +335,7 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
       const handleAiStatus = (_: any, data: any) => {
         if (data.status === 'thinking') {
           setIsAiThinking(true);
+          setAiToolEvents([]);
           setAiStatusMessage(appLang === 'ar' ? 'MOHIVX يفكر ويتخذ القرار...' : 'MOHIVX is thinking...');
         } else if (data.status === 'idle') {
           setIsAiThinking(false);
@@ -334,9 +343,16 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
           if (data.result && data.requestId) appendAiReply(data.result, data.requestId);
         }
       };
+      const handleAiTool = (_: any, data: any) => {
+        if (!data?.tool) return;
+        setAiToolEvents(previous => [...previous.slice(-5), data]);
+        if (data.phase === 'start') setAiStatusMessage(appLang === 'ar' ? `ينفذ: ${data.tool}` : `Running: ${data.tool}`);
+      };
       electron.ipcRenderer.on('ai-status-change', handleAiStatus);
+      electron.ipcRenderer.on('ai-tool-event', handleAiTool);
       return () => {
         electron.ipcRenderer.removeListener('ai-status-change', handleAiStatus);
+        electron.ipcRenderer.removeListener('ai-tool-event', handleAiTool);
       };
     }
   }, [appLang]);
@@ -355,6 +371,7 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
     };
     setAiChatMessages(prev => [...prev, userMsg]);
     setIsAiThinking(true);
+    setAiToolEvents([]);
     setAiStatusMessage(appLang === 'ar' ? 'جاري المعالجة...' : 'Processing...');
 
     try {
@@ -381,6 +398,13 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
       setIsAiThinking(false);
       setAiStatusMessage('');
     }
+  };
+
+  const cancelAiPrompt = () => {
+    const requestId=aiPendingRequest.current;
+    if(!requestId)return;
+    void electron?.ipcRenderer.invoke('execute-ai-cancel',{requestId});
+    setAiStatusMessage(appLang==='ar'?'جارٍ إيقاف الطلب…':'Stopping request…');
   };
 
   const handleTestGhostCursor = () => {
@@ -521,6 +545,13 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
   const glanceTitle=musicState.outputOnly?(appLang==='ar'?'صوت الجهاز':'Device audio'):mediaInfo.title;
   const glanceArtist=musicState.outputOnly?(appLang==='ar'?'صوت قيد التشغيل':'Sound is playing'):mediaInfo.artist;
   const glanceArtwork=musicState.outputOnly?undefined:mediaInfo.artwork;
+  const [mediaAccent,setMediaAccent]=useState('');
+  useEffect(()=>{
+    let alive=true;
+    if(!appSettings.mediaFollowAccent||!mediaIsPlaying||!glanceArtwork){setMediaAccent('');return()=>{alive=false;};}
+    void extractMediaAccent(glanceArtwork).then(value=>{if(alive)setMediaAccent(value);});
+    return()=>{alive=false;};
+  },[appSettings.mediaFollowAccent,mediaIsPlaying,glanceArtwork]);
   useEffect(()=>{
     if(!mediaGlance && islandStage==='compact-media')transitionRef.current('collapsed');
   },[mediaGlance,islandStage]);
@@ -1339,7 +1370,9 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
   const currentShape = appSettings.islandShape || 'classic';
   const currentTheme = appSettings.theme || 'original-blue';
   const accentColor = themeAccent(appSettings);
-  const islandFill=isLightMode?'#f4f4f7':islandThemeFill(appSettings);
+  const effectiveAccentColor=mediaAccent||accentColor;
+  const visualTheme=mediaAccent?{...appSettings,theme:'custom' as const,customAccentColor:mediaAccent}:appSettings;
+  const islandFill=isLightMode?'#f4f4f7':islandThemeFill(visualTheme);
 
   const edge = islandEdge(appSettings.position);
   const sideEdge = edge==='left'||edge==='right';
@@ -1438,7 +1471,7 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
       data-music-satellite-active={musicSatellite}
       dir="ltr"
       data-panel-corners={appSettings.panelCorners || 'rounded'}
-      style={{...themeVariables(appSettings),'--app-accent':accentColor,'--island-fill':islandFill,'--panel-card':'#141518','--edge-inset':`${COLLAPSED_SHAPES[currentShape]?.inset||0}px`,'--ear-gutter':`${earGutter}px`} as React.CSSProperties}
+      style={{...themeVariables(visualTheme),'--app-accent':effectiveAccentColor,'--island-fill':islandFill,'--panel-card':'#141518','--edge-inset':`${COLLAPSED_SHAPES[currentShape]?.inset||0}px`,'--ear-gutter':`${earGutter}px`} as React.CSSProperties}
     >
       {/* Outer morphing wrapper that carries the ears and seamless drop-shadow */}
       <div
@@ -1798,8 +1831,10 @@ export const DynamicIsland: React.FC<DynamicIslandProps> = ({
                       <div className="flex items-center gap-2 text-xs text-sky-400 bg-sky-500/10 border border-sky-500/20 p-2.5 rounded-2xl max-w-fit animate-pulse">
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
                         <span>{aiStatusMessage || (appLang === 'ar' ? 'يفكر...' : 'Thinking...')}</span>
+                        <button type="button" onClick={cancelAiPrompt} className="ml-1 px-1.5 py-0.5 rounded bg-white/10 text-[10px] text-zinc-200" aria-label={appLang === 'ar' ? 'إيقاف الطلب' : 'Stop request'}><X className="w-3 h-3" /></button>
                       </div>
                     )}
+                    {isAiThinking && aiToolEvents.length>0 && <div className="flex flex-wrap gap-1 text-[10px] text-zinc-400">{aiToolEvents.slice(-3).map((event,index)=><span key={`${event.tool}-${index}`} className="px-2 py-0.5 rounded-full border border-white/10 bg-white/5">{event.phase==='start'?'▶':'✓'} {event.tool}</span>)}</div>}
                   </div>
 
                   {/* Quick Action Chips */}

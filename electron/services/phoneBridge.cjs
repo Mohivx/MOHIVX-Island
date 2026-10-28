@@ -19,11 +19,12 @@ function jpegSize(bytes){
 }
 class PhoneBridge{
  constructor(onChange=()=>{}){this.frames=new Map();this.audio=new Map();this.streams=new Map();this.frameTimes=new Map();this.seq=0;this.onChange=onChange;}
- begin(device,kind){if(!['camera','mic','screen'].includes(kind))throw Error('Unsupported media source.');this.clear(device,kind);const streamId=crypto.randomBytes(16).toString('hex');this.streams.set(device+':'+kind,streamId);return {success:true,streamId};}
+ begin(device,kind){if(!['camera','mic','screen','audio'].includes(kind))throw Error('Unsupported media source.');this.clear(device,kind);const streamId=crypto.randomBytes(16).toString('hex');this.streams.set(device+':'+kind,streamId);return {success:true,streamId};}
  publish(device,kind,data){
   if(!this.streams.has(device+':'+kind)||data?.streamId!==this.streams.get(device+':'+kind))throw Error('Media session stopped. Start sharing again.');
   if(!data||typeof data.data!=='string'||data.data.length>1100000||!/^[A-Za-z0-9+/]*={0,2}$/.test(data.data))throw Error('Invalid media packet.');const bytes=Buffer.from(data.data,'base64');let frame;
   if(kind==='mic'){if(![16000,24000,48000].includes(data.rate)||bytes.length<2||bytes.length%2||bytes.length>data.rate*4)throw Error('Invalid microphone packet.');let sum=0,peak=0;for(let i=0;i<bytes.length;i+=2){const sample=bytes.readInt16LE(i)/32768;sum+=sample*sample;peak=Math.max(peak,Math.abs(sample));}frame={device,kind,rate:data.rate,data:data.data,inputLevel:Math.sqrt(sum/(bytes.length/2)),inputPeak:peak};}
+  else if(kind==='audio'){if(data.rate!==48000||data.channels!==2||bytes.length<4||bytes.length%4||bytes.length>19200)throw Error('Invalid phone audio packet.');let sum=0,peak=0;for(let i=0;i<bytes.length;i+=2){const sample=bytes.readInt16LE(i)/32768;sum+=sample*sample;peak=Math.max(peak,Math.abs(sample));}frame={device,kind,rate:data.rate,channels:data.channels,data:data.data,inputLevel:Math.sqrt(sum/(bytes.length/2)),inputPeak:peak};}
   else{const size=jpegSize(bytes);if(!['camera','screen'].includes(kind)||!size)throw Error('Invalid image packet.');frame={device,kind,...size,dataUrl:'data:image/jpeg;base64,'+data.data};}
   frame.first=!this.frames.has(device+':'+kind);
   frame.sequence=++this.seq;frame.at=Date.now();

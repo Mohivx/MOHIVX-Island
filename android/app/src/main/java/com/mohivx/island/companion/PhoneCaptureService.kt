@@ -41,7 +41,7 @@ class PhoneCaptureService:Service() {
     override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int {
         if(intent?.action==STOP){val kind=intent.getStringExtra("kind");if(kind==null)sessions.keys.toList().forEach{stop(it)} else stop(kind);if(sessions.isEmpty())stopSelf();return START_NOT_STICKY}
         val kind=intent?.getStringExtra("kind") ?: run{stopSelf();return START_NOT_STICKY}
-        if(intent.action!=START||kind !in setOf("camera","screen","mic")||!client.paired){stopSelf();return START_NOT_STICKY}
+        if(intent.action!=START||kind !in setOf("camera","screen","mic","audio")||!client.paired){stopSelf();return START_NOT_STICKY}
         if(sessions.containsKey(kind))return START_NOT_STICKY
         lastError=""
         val session=Capture(kind,intent.getBooleanExtra("front",false));sessions[kind]=session
@@ -53,10 +53,10 @@ class PhoneCaptureService:Service() {
         val stop=PendingIntent.getService(this,41,Intent(this,PhoneCaptureService::class.java).setAction(STOP),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val open=PendingIntent.getActivity(this,42,Intent(this,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val builder=if(Build.VERSION.SDK_INT>=26)Notification.Builder(this,"phone-sharing") else Notification.Builder(this)
-        val labels=sessions.keys.map{when(it){"camera"->t("Camera","الكاميرا");"mic"->t("Microphone","المايك");else->t("Screen","الشاشة")}}
+        val labels=sessions.keys.map{when(it){"camera"->t("Camera","الكاميرا");"mic"->t("Microphone","المايك");"audio"->t("Phone audio","صوت الهاتف");else->t("Screen","الشاشة")}}
         val notification=builder.setSmallIcon(android.R.drawable.ic_menu_camera).setContentTitle(t("Sharing with MOHIVX Island","مشاركة مع MOHIVX Island")).setContentText(labels.joinToString(" · ")).setOngoing(true).setContentIntent(open).addAction(android.R.drawable.ic_media_pause,t("Stop all","إيقاف الكل"),stop).build()
         var types=0
-        if(sessions.containsKey("screen"))types=types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+        if(sessions.containsKey("screen")||sessions.containsKey("audio"))types=types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
         if(Build.VERSION.SDK_INT>=30){if(sessions.containsKey("camera"))types=types or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA;if(sessions.containsKey("mic"))types=types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE}
         if(Build.VERSION.SDK_INT>=29)startForeground(44,notification,types) else startForeground(44,notification)
     }
@@ -73,6 +73,8 @@ class PhoneCaptureService:Service() {
         private var transportFailures=0
         @Volatile private var stopped=false
         private var streamId=""
+        private val audioSending=AtomicBoolean(false)
+        private val audioQueue=java.util.ArrayDeque<ByteArray>()
         private val sending=AtomicBoolean(false)
         private var lastFrame=0L
         private var thread:HandlerThread?=null
@@ -89,13 +91,13 @@ class PhoneCaptureService:Service() {
             transport.execute{try{
                 if(stopped)return@execute
                 val started=client.request("/api/phone-start",JSONObject().put("kind",kind));streamId=started.getString("streamId");client.enableMediaLanes(started.optBoolean("mediaLanes"))
-                main.post{if(!stopped)try{when(kind){"mic"->microphone();"screen"->screen(intent);"camera"->camera()}}catch(e:Exception){fail(kind,e)}}
+                main.post{if(!stopped)try{when(kind){"mic"->microphone();"screen"->screen(intent);"camera"->camera();"audio"->playbackAudio(intent)}}catch(e:Exception){fail(kind,e)}}
             }catch(e:Exception){fail(kind,e)}}
         }
         private fun background():Handler {thread=HandlerThread("MOHIVX-$kind").apply{start()};return Handler(thread!!.looper).also{handler=it}}
-        private fun send(bytes:ByteArray,rate:Int?=null){
+        private fun send(bytes:ByteArray,rate:Int?=null,channels:Int?=null){
             if(stopped||streamId.isEmpty()||!sending.compareAndSet(false,true))return
-            transport.execute{try{if(!stopped){val body=JSONObject().put("streamId",streamId).put("data",Base64.encodeToString(bytes,Base64.NO_WRAP));if(rate!=null)body.put("rate",rate);client.request("/api/phone-$kind",body);transportFailures=0}}catch(e:Exception){
+            transport.execute{try{if(!stopped){val body=JSONObject().put("streamId",streamId).put("data",Base64.encodeToString(bytes,Base64.NO_WRAP));if(rate!=null)body.put("rate",rate);if(channels!=null)body.put("channels",channels);client.request("/api/phone-$kind",body);transportFailures=0}}catch(e:Exception){
                 if(e is java.net.SocketTimeoutException || e is java.net.ConnectException || e is java.net.SocketException){transportFailures++;if(transportFailures>=3)fail(kind,e)}else fail(kind,e)
             }finally{sending.set(false)}}
         }
@@ -110,6 +112,44 @@ class PhoneCaptureService:Service() {
             require(audio.state==AudioRecord.STATE_INITIALIZED){"Microphone unavailable"};audio.startRecording()
             require(audio.recordingState==AudioRecord.RECORDSTATE_RECORDING){"Microphone access denied"}
             Thread({try{val block=ByteArray(6400);while(!stopped){var used=0;while(used<block.size&&!stopped){val count=audio.read(block,used,block.size-used);if(count<=0)throw IllegalStateException("Microphone stopped");used+=count};if(used>0&&!stopped)send(block.copyOf(used-used%2),rate)}}catch(e:Exception){if(!stopped)fail(kind,e)}},"MOHIVX-audio").start()
+        }
+        @android.annotation.TargetApi(29)
+        @Suppress("MissingPermission") private fun playbackAudio(intent:Intent){
+            require(Build.VERSION.SDK_INT>=29){"Phone playback audio needs Android 10 or later"}
+            val consent=if(Build.VERSION.SDK_INT>=33)intent.getParcelableExtra("consent",Intent::class.java) else @Suppress("DEPRECATION") intent.getParcelableExtra("consent")
+            require(consent!=null){"Phone audio sharing needs Android consent"}
+            val manager=getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            val playbackProjection=manager.getMediaProjection(Activity.RESULT_OK,consent);projection=playbackProjection
+            playbackProjection.registerCallback(object:MediaProjection.Callback(){override fun onStop(){main.post{if(!stopped)stop(kind)}}},main)
+            val capture=AudioPlaybackCaptureConfiguration.Builder(playbackProjection)
+                .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
+                .addMatchingUsage(AudioAttributes.USAGE_GAME)
+                .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN)
+                .build()
+            val rate=48000
+            val format=AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(rate).setChannelMask(AudioFormat.CHANNEL_IN_STEREO).build()
+            val minimum=AudioRecord.getMinBufferSize(rate,AudioFormat.CHANNEL_IN_STEREO,AudioFormat.ENCODING_PCM_16BIT)
+            require(minimum>0){"Phone playback audio format unavailable"}
+            val audio=AudioRecord.Builder().setAudioFormat(format).setBufferSizeInBytes(maxOf(minimum*2,19200)).setAudioPlaybackCaptureConfig(capture).build();recorder=audio
+            require(audio.state==AudioRecord.STATE_INITIALIZED){"Phone playback audio unavailable"};audio.startRecording()
+            require(audio.recordingState==AudioRecord.RECORDSTATE_RECORDING){"Phone playback capture did not start"}
+            Thread({try{
+                val block=ByteArray(7680)
+                while(!stopped){var used=0;while(used<block.size&&!stopped){val count=audio.read(block,used,block.size-used,AudioRecord.READ_BLOCKING);if(count<0)throw IllegalStateException("Phone playback capture stopped ($count)");used+=count};if(used==block.size&&!stopped)queuePlayback(block.copyOf(),rate,2)}
+            }catch(e:Exception){if(!stopped)fail(kind,e)}},"MOHIVX-phone-playback").start()
+        }
+        private fun queuePlayback(bytes:ByteArray,rate:Int,channels:Int){
+            synchronized(audioQueue){while(audioQueue.size>=6)audioQueue.removeFirst();audioQueue.addLast(bytes)}
+            startAudioDrain(rate,channels)
+        }
+        private fun startAudioDrain(rate:Int,channels:Int){
+            if(!audioSending.compareAndSet(false,true))return
+            transport.execute{try{
+                while(!stopped){val bytes=synchronized(audioQueue){if(audioQueue.isEmpty())null else audioQueue.removeFirst()}?:break
+                    try{val body=JSONObject().put("streamId",streamId).put("data",Base64.encodeToString(bytes,Base64.NO_WRAP)).put("rate",rate).put("channels",channels);client.request("/api/phone-audio",body);transportFailures=0}
+                    catch(e:Exception){if(e is java.net.SocketTimeoutException||e is java.net.ConnectException||e is java.net.SocketException){transportFailures++;if(transportFailures>=3){fail(kind,e);break}}else{fail(kind,e);break}}
+                }
+            }finally{audioSending.set(false);if(!stopped&&synchronized(audioQueue){audioQueue.isNotEmpty()})startAudioDrain(rate,channels)}}
         }
         private fun screen(intent:Intent){
             val consent=if(Build.VERSION.SDK_INT>=33)intent.getParcelableExtra("consent",Intent::class.java) else @Suppress("DEPRECATION") intent.getParcelableExtra("consent")
@@ -158,6 +198,7 @@ class PhoneCaptureService:Service() {
 
         fun close(){
             if(stopped)return;stopped=true
+            synchronized(audioQueue){audioQueue.clear()}
             try{recorder?.stop()}catch(_:Exception){};try{recorder?.release()}catch(_:Exception){};recorder=null
             try{cameraSession?.close()}catch(_:Exception){};try{camera?.close()}catch(_:Exception){}
             try{display?.release()}catch(_:Exception){};try{projection?.stop()}catch(_:Exception){};try{reader?.close()}catch(_:Exception){};thread?.quitSafely()

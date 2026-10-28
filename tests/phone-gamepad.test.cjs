@@ -1,0 +1,3 @@
+const test=require('node:test');const assert=require('node:assert/strict');
+test('phone gamepad maps buttons to bounded normalized taps and keyboard shortcuts',async()=>{const m=await import('../src/components/phoneGamepad.mjs');assert.deepEqual(m.gamepadInput(undefined,'a'),{type:'tap',x:.82,y:.81});assert.deepEqual(m.gamepadInput({a:{x:2,y:-1}},'a'),{type:'tap',x:1,y:0});assert.equal(m.gamepadActionForKey({key:'ArrowLeft'}),'left');assert.equal(m.gamepadActionForKey({key:'z'}),'a');assert.equal(m.gamepadActionForKey({key:'z',altKey:true}),'');});
+test('phone gamepad rejects unknown actions',async()=>{const m=await import('../src/components/phoneGamepad.mjs');assert.throws(()=>m.gamepadInput(undefined,'invalid'),/Unknown gamepad action/);});

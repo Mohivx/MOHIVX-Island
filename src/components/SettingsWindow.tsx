@@ -10,7 +10,7 @@ import {GlassDock} from './GlassDock';
 import { CustomizationSettings } from './CustomizationSettings';
 import {IslandCustomizationPanel} from './IslandCustomizationPanel';
 import { soulLabel } from '../labels';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Home, Link, Flame, Bot, Smartphone, Store, Route, Armchair, Settings, Search, X, Keyboard, SlidersHorizontal, Monitor, KeyRound, Database, Shield, Bell, Check, ExternalLink, Send, Mic, Volume2, FolderOpen, RefreshCw } from 'lucide-react';
 import { useSettings, ipc } from '../hooks/useSettings';
 import type { CompanionSettings } from '../hooks/useSettings';
@@ -47,6 +47,7 @@ const shortcutRows = [
   ['trigger-dictation', 'Smart Dictation', 'الإملاء الذكي'], ['ask-clipboard', 'Ask about clipboard', 'السؤال عن الحافظة'],
   ['trigger-scheduled', 'Scheduled Actions', 'الإجراءات المجدولة'], ['trigger-loadout', 'Soul loadout', 'تجهيز الروح'],
 ];
+const aiToolLabels:Record<string,[string,string]>={open_application:['Open app','فتح التطبيق'],search_web:['Search web','البحث على الويب'],control_media:['Control media','التحكم بالوسائط'],get_system_status:['Read system status','قراءة حالة النظام'],file_controller:['Handle file','التعامل مع ملف'],code_helper:['Edit code','تعديل الكود'],dev_agent:['Create project','إنشاء مشروع'],computer_control:['Control computer','التحكم بالكمبيوتر'],screen_process:['Inspect screen','فحص الشاشة'],research_web:['Research web','البحث المتقدم'],calendar:['Update calendar','تحديث التقويم'],todo:['Update tasks','تحديث المهام']};
 function Row({ title, detail, children }: { title: string; detail?: string; children: React.ReactNode }) {
   return <div className="setting-row"><div><b>{title}</b>{detail && <p>{detail}</p>}</div><div className="row-control">{children}</div></div>;
 }
@@ -90,6 +91,10 @@ export const SettingsWindow: React.FC = () => {
   const [speaking,setSpeaking]=useState(false);
   const [busy, setBusy] = useState(false);
   const [reply, setReply] = useState('');
+  const [aiToolEvents,setAiToolEvents] = useState<any[]>([]);
+  const [aiProgress,setAiProgress] = useState<any>(null);
+  const [activeAiRequest,setActiveAiRequest] = useState('');
+  const activeAiRequestRef = useRef('');
   const [conversation, setConversation] = useState<{ role: string; text: string }[]>([]);
   const [scheduled, setScheduled] = useState(false);
   const [appVersion, setAppVersion] = useState('');
@@ -97,6 +102,7 @@ export const SettingsWindow: React.FC = () => {
   const ar = s.appLang === 'ar';
   const settingsDir = s.settingsDirection === 'auto' ? (ar ? 'rtl' : 'ltr') : s.settingsDirection;
   const text = (en: string, arabic: string) => ar ? arabic : en;
+  const aiToolLabel=(tool:string)=>{const label=aiToolLabels[tool];return label?text(label[0],label[1]):tool.replaceAll('_',' ');};
   const skin = SOUL_SKINS[s.activeSkin] || SOUL_SKINS.hitodama;
   const voice = VOICES.find(v => v.name === s.activeVoice) || VOICES[0];
   const title = sections.find(x => x.id === section);
@@ -144,6 +150,13 @@ export const SettingsWindow: React.FC = () => {
       ipc.invoke('get-real-telemetry').then(setHardware).catch(() => {});
     }
   }, [section, dock]);
+  useEffect(()=>{if(!ipc)return;
+    const toolEvent=(_:unknown,value:any)=>{if(!value?.tool||value.requestId!==activeAiRequestRef.current)return;setAiToolEvents(old=>[...old.slice(-5),value]);};
+    const progressEvent=(_:unknown,value:any)=>{if(!value?.requestId||value.requestId!==activeAiRequestRef.current)return;setAiProgress(value);};
+    const textEvent=(_:unknown,value:any)=>{if(!value?.requestId||value.requestId!==activeAiRequestRef.current||typeof value.text!=='string')return;setReply(old=>old+value.text);};
+    ipc.on('ai-tool-event',toolEvent);ipc.on('ai-progress',progressEvent);ipc.on('ai-text-delta',textEvent);
+    return()=>{ipc.removeListener('ai-tool-event',toolEvent);ipc.removeListener('ai-progress',progressEvent);ipc.removeListener('ai-text-delta',textEvent);};
+  },[]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') { if (keyService) setKeyService(null); else if (recording) setRecording(null); else close(); return; }
@@ -168,10 +181,12 @@ export const SettingsWindow: React.FC = () => {
   async function sendPrompt(event: React.FormEvent) {
     event.preventDefault(); if (!prompt.trim() || busy) return;
     if (!ipc) { setMessage(text('AI is available in the Windows app.', 'الذكاء الاصطناعي متاح في تطبيق ويندوز.')); return; }
-    setBusy(true); setReply('');
-    try { const result = await ipc.invoke('execute-ai-prompt', { prompt, history: conversation.slice(-12) }); setReply(result.reply || result.error || text('No response.', 'لا يوجد رد.')); if (result.success) setConversation(previous => [...previous, { role: 'user', text: prompt }, { role: 'assistant', text: result.reply }]); setPrompt(''); }
-    catch (e) { setReply(String(e)); } finally { setBusy(false); }
+    setBusy(true); setReply(''); setAiToolEvents([]); setAiProgress({phase:'thinking'}); const requestId=crypto.randomUUID(); activeAiRequestRef.current=requestId; setActiveAiRequest(requestId);
+    try { const result = await ipc.invoke('execute-ai-prompt', { prompt, history: conversation.slice(-12),requestId }); setReply(previous=>result.reply || result.error || previous || text('No response.', 'لا يوجد رد.')); if (result.success) setConversation(previous => [...previous, { role: 'user', text: prompt }, { role: 'assistant', text: result.reply }]); setPrompt(''); }
+    catch (e) { setReply(String(e)); } finally { activeAiRequestRef.current=''; setBusy(false); setActiveAiRequest(''); setAiProgress(null); }
   }
+  const cancelAiRequest=()=>{if(activeAiRequest)void ipc?.invoke('execute-ai-cancel',{requestId:activeAiRequest});};
+  const speakReply=async()=>{if(!ipc||!reply||speaking)return;setSpeaking(true);try{const speech=await ipc.invoke('preview-companion-voice',{voice:s.activeVoice,text:reply});if(!speech.success)throw Error(speech.error||text('Voice unavailable.','الصوت غير متاح.'));await playVoice(speech.audio,speech.mimeType);}catch(error){setMessage(error instanceof Error?error.message:String(error));}finally{setSpeaking(false);}};
 
   return <div className="companion-app" style={themeVariables(s) as React.CSSProperties} dir={settingsDir} data-maximized={maximized} data-character={skin.id} data-settings-theme={s.settingsTheme} data-testid="companion-app">
     <header className="companion-titlebar" data-window-controls-side={s.windowControlsSide} onDoubleClick={()=>void ipc?.invoke('desktop-window-action','maximize')}><span><CompanionCharacter size={21} skin={skin} />MOHIVX Island</span><WindowControls ar={ar} onClose={close} onMaximizedChange={setMaximized}/></header>
@@ -238,7 +253,7 @@ export const SettingsWindow: React.FC = () => {
           </>}
         </main>
       </> : dock==='agents'?<main className="companion-fullpage"><AgentPage/></main>:dock==='phone'?<main className="companion-fullpage"><PhoneHub/></main>: dock === 'soul' ? <main className="companion-fullpage"><LoadoutHub embedded isOpen onClose={() => setDock('home')} activeSkin={skin} activeVoice={voice} onSelectSkin={value => save({ activeSkin: value.id })} onSelectVoice={value => save({ activeVoice: value.name })} onTriggerAbility={tool} /></main>
-      : ['home','bond','desk','calendar','todo','snippets','memory','chat','insights','store','tools'].includes(dock) ? <main className="companion-fullpage reference-fullpage"><CompanionPages key={dock} page={dock as CompanionPage} onNavigate={setDock} onTool={tool}/>{dock==='home'&&<LiveConversation/>}{dock==='home'&&<details className="settings-disclosure home-conversation"><summary>{text('Voice conversation','المحادثة الصوتية')}</summary><div className="home-voice-panel"><CompanionCharacter size={65} skin={skin} state={speaking?'speaking':busy?'thinking':'idle'}/>{reply&&<p className="home-reply" dir="auto">{reply}</p>}<form className="companion-prompt" onSubmit={sendPrompt}><input aria-label={text('Ask your companion','اسأل رفيقك')} placeholder={text('Ask your companion…','اسأل رفيقك…')} value={prompt} onChange={e=>setPrompt(e.target.value)}/><button type="button" disabled={busy||!s.voiceInputEnabled} aria-label={text('Talk to your companion','تحدث مع رفيقك')} onClick={()=>voiceInput.recording?voiceInput.stop():void voiceInput.start()}><Mic size={16}/></button><button type="submit" disabled={busy||!prompt.trim()} aria-label={text('Send prompt','إرسال الطلب')}><Send size={16}/></button></form>{voiceInput.recording&&<p>{text('Listening… choose the microphone to finish.','جارٍ الاستماع… اضغط الميكروفون للإنهاء.')}</p>}{voiceInput.error&&<p role="alert">{voiceInput.error}</p>}</div></details>}</main>
+      : ['home','bond','desk','calendar','todo','snippets','memory','chat','insights','store','tools'].includes(dock) ? <main className="companion-fullpage reference-fullpage"><CompanionPages key={dock} page={dock as CompanionPage} onNavigate={setDock} onTool={tool}/>{dock==='home'&&<LiveConversation/>}{dock==='home'&&<details className="settings-disclosure home-conversation"><summary>{text('Voice conversation','المحادثة الصوتية')}</summary><div className="home-voice-panel"><CompanionCharacter size={65} skin={skin} state={speaking?'speaking':busy?'thinking':'idle'}/>{reply&&<div className="home-reply-row"><p className="home-reply" dir="auto">{reply}</p><button type="button" className="reply-speak" disabled={busy||speaking} onClick={()=>void speakReply()} aria-label={text('Read this reply aloud','قراءة الرد بصوت عال')}><Volume2 size={14}/></button></div>}{busy&&(aiProgress||aiToolEvents.length>0)&&<div className="ai-tool-progress" aria-live="polite">{aiProgress?.phase==='thinking'&&<span className="ai-progress-current">{text('Thinking…','يفكّر…')}</span>}{aiProgress?.phase==='tool'&&<span className="ai-progress-current">{text('Applying','يطبّق')} · {aiToolLabel(aiProgress.tool)}</span>}{aiToolEvents.slice(-3).map((event:any,i:number)=><span key={i} data-phase={event.phase}>{event.phase==='start'?'▶':'✓'} {aiToolLabel(event.tool)}</span>)}</div>}<form className="companion-prompt" onSubmit={sendPrompt}><input aria-label={text('Ask your companion','اسأل رفيقك')} placeholder={text('Ask your companion…','اسأل رفيقك…')} value={prompt} onChange={e=>setPrompt(e.target.value)}/><button type="button" disabled={busy||!s.voiceInputEnabled} aria-label={text('Talk to your companion','تحدث مع رفيقك')} onClick={()=>voiceInput.recording?voiceInput.stop():void voiceInput.start()}><Mic size={16}/></button>{busy?<button type="button" onClick={cancelAiRequest} aria-label={text('Stop request','إيقاف الطلب')}><X size={16}/></button>:<button type="submit" disabled={!prompt.trim()} aria-label={text('Send prompt','إرسال الطلب')}><Send size={16}/></button>}</form>{voiceInput.recording&&<p>{text('Listening… choose the microphone to finish.','جارٍ الاستماع… اضغط الميكروفون للإنهاء.')}</p>}{voiceInput.error&&<p role="alert">{voiceInput.error}</p>}</div></details>}</main>
       : dock === 'links' ? <main className="companion-fullpage connections-page"><h1>{text('Connections', 'الاتصالات')}</h1><p className="page-caption">{text('The services behind your companion.', 'الخدمات التي يعتمد عليها رفيقك.')}</p>{[['Gemini', s.geminiKey, text('Conversation · Vision · Dictation', 'المحادثة · الرؤية · الإملاء')], ['Tavily', s.tavilyKey, text('Web research', 'البحث على الويب')]].map(([name, key, detail]) => <Row key={name} title={name} detail={detail}><span className="connection-state" data-connected={Boolean(key)}>{key ? text('Key saved', 'المفتاح محفوظ') : text('Not connected', 'غير متصل')}</span><button className="subtle-button" onClick={() => { setSection('keys'); setDock('settings'); }}>{text('Manage', 'إدارة')}</button></Row>)}<ExtensionConnections/></main>
       : <main className="companion-fullpage"><h1>{text('Souls', 'الأرواح')}</h1><p className="page-caption">{text('Choose the flame that feels like yours.', 'اختر الروح التي تشبهك.')}</p><div className="soul-store">{Object.values(SOUL_SKINS).map(value => <button key={value.id} className={skin.id === value.id ? 'selected' : ''} onClick={() => save({ activeSkin: value.id })}><CompanionCharacter size={80} skin={value} /><h3>{soulLabel(value.name,ar)}</h3><small>{soulLabel(value.rarity,ar)}</small><p>{soulLabel(value.blurb,ar)}</p>{skin.id === value.id && <Check size={14} />}</button>)}</div></main>}
     </div>
