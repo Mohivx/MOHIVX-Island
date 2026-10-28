@@ -6,9 +6,9 @@ A Windows desktop companion with an Android app. It brings together the floating
 
 ## الإصدار | Version
 
-الإصدار الحالي: **1.1.3**. التنزيلات الرسمية في [GitHub Releases](https://github.com/Mohivx/MOHIVX-Island/releases).
+الإصدار الحالي: **1.1.4**. التنزيلات الرسمية في [GitHub Releases](https://github.com/Mohivx/MOHIVX-Island/releases).
 
-Current version: **1.1.3**. Official downloads are published on [GitHub Releases](https://github.com/Mohivx/MOHIVX-Island/releases).
+Current version: **1.1.4**. Official downloads are published on [GitHub Releases](https://github.com/Mohivx/MOHIVX-Island/releases).
 
 ## المكونات | Components
 
