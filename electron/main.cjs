@@ -21,7 +21,9 @@ const {PhoneBridge}=require('./services/phoneBridge.cjs');
 const {PhoneSync}=require('./services/phoneSync.cjs');
 const phoneSync=new PhoneSync({onNotification:notice=>notify(notice)});
 const {createPhoneViewer}=require('./services/phoneViewer.cjs');
-const phoneViewers=createPhoneViewer({BrowserWindow,screen,root:path.join(__dirname,'..')});
+const {createEdgeHandoffController}=require('../src/components/phonePlacement.mjs');
+const edgeHandoff=createEdgeHandoffController({dwellMs:220,edgeThresholdPx:6,hysteresisPx:32,maxSpeedPxPerMs:1.6,cooldownMs:600});
+const phoneViewers=createPhoneViewer({BrowserWindow,screen,root:path.join(__dirname,'..'),onClose:(device,kind)=>{if(kind==='screen'&&edgeHandoff.getActiveDevice()===device)edgeHandoff.release('viewer-closed');}});
 const { islandBounds } = require('./services/windowLayout.cjs');
 const { ActivityStore } = require('./services/activityStore.cjs');
 const {CompanionWorkspace}=require('./services/companionWorkspace.cjs');
@@ -171,6 +173,7 @@ let cameraSending=false;
 const mediaDiagnosticTimes=new Map();
 const phoneMedia=new PhoneBridge(frame=>{
   if(process.env.MOHIVX_MEDIA_DIAGNOSTICS==='1'&&!frame.stopped&&Date.now()-(mediaDiagnosticTimes.get(frame.kind)||0)>5000){mediaDiagnosticTimes.set(frame.kind,Date.now());log('Phone stream '+frame.kind+': '+frame.fps+' fps, '+frame.width+'x'+frame.height);}
+  if(frame.stopped&&frame.kind==='screen'&&edgeHandoff.getActiveDevice()===frame.device){edgeHandoff.release('screen-stopped');phoneSync.cancelInputs(frame.device,'Phone screen sharing stopped.');phoneViewers.releaseHandoff(frame.device,'screen-stopped');}
   const {data,dataUrl,...metadata}=frame;
   for(const win of [hubWindow])if(win&&!win.isDestroyed())win.webContents.send('phone-media-updated',metadata);
   phoneViewers.send('phone-media-updated',metadata);
@@ -1718,7 +1721,7 @@ const legacyConfigFilePath = path.join(os.homedir(), '.hitodama-ai', 'config.jso
 const legacySettingsFilePath = path.join(os.homedir(), '.hitodama-ai', 'settings.json');
 
 const defaultAppSettings = {
-  agentBridgeEnabled:true,agentShowRequests:true,agentNotifyOnComplete:true,agentNotifyOnError:true,agentSyncToAndroid:true,wallpaperTransition:true,phoneCameraDevice:'',phoneMicDevice:'',phoneMicSink:'',phoneMicAuto:true,phoneSelectedDevice:'',phoneDeviceLayout:{},phoneClipboardAutoSync:false,
+  agentBridgeEnabled:true,agentShowRequests:true,agentNotifyOnComplete:true,agentNotifyOnError:true,agentSyncToAndroid:true,wallpaperTransition:true,phoneCameraDevice:'',phoneMicDevice:'',phoneMicSink:'',phoneMicAuto:true,phoneSelectedDevice:'',phoneDeviceLayout:{},phoneEdgeHandoff:false,phoneClipboardAutoSync:false,
   appLang: 'en',userName:'',weatherCity:'',historySide:'left',windowControlsSide:'right',advancedMode:false,uiSounds:true,uiSoundVolume:.12,abilitySoundVolume:.16,liveVoiceModel:'gemini-3.8-live',replySpeed:'patient',
   baselineVersion: 2,
   aiEnabled: true, aiProvider: 'gemini-cloud', voiceInputEnabled: true,
@@ -2021,7 +2024,36 @@ ipcMain.handle('phone-file-upload',async(event,{device,parent=''})=>{
   }
   return {success:true,files:transfers};
 });
-ipcMain.handle('phone-media-stop',(_event,{device,kind})=>{if(!kind||kind==='screen'||kind==='all')phoneSync.cancelInputs(device,'Phone screen sharing stopped.');return phoneMedia.clear(device,kind);});
+ipcMain.handle('phone-media-stop',(_event,{device,kind})=>{if(!kind||kind==='screen'||kind==='all'){phoneSync.cancelInputs(device,'Phone screen sharing stopped.');if(!device||edgeHandoff.getActiveDevice()===device){edgeHandoff.release('stopped');phoneViewers.releaseHandoff(device,'stopped');}}return phoneMedia.clear(device,kind);});
+ipcMain.handle('phone-edge-handoff-release',(_event,{device,reason='escape'}={})=>{const r=edgeHandoff.release(String(reason||'escape'));if(device)phoneSync.cancelInputs(device,'Phone control released.');phoneViewers.releaseHandoff(device||r.deviceId||'',String(reason||'escape'));return {success:true,...r};});
+ipcMain.handle('phone-edge-handoff-status',()=>({enabled:Boolean(currentAppSettings.phoneEdgeHandoff),activeDeviceId:edgeHandoff.getActiveDevice(),rearmRequired:edgeHandoff.isRearmRequired()}));
+const edgeHandoffTimer=setInterval(()=>{
+ if(!app.isReady()||qaMode)return;
+ const enabled=Boolean(currentAppSettings.phoneEdgeHandoff);
+ if(!enabled&&!edgeHandoff.getActiveDevice())return;
+ try{
+  const primaryId=screen.getPrimaryDisplay().id;
+  const displays=screen.getAllDisplays().map((d,i)=>({id:String(d.id),name:d.label||`Display ${i+1}`,primary:d.id===primaryId,bounds:{x:d.bounds.x,y:d.bounds.y,width:d.bounds.width,height:d.bounds.height},workArea:{x:d.workArea.x,y:d.workArea.y,width:d.workArea.width,height:d.workArea.height},scaleFactor:d.scaleFactor}));
+  const devices=androidGateway.devices||[];
+  const point=screen.getCursorScreenPoint();
+  const isEligible=deviceId=>{
+   const dev=devices.find(d=>d.id===deviceId);
+   if(!dev?.capabilities?.includes('phoneScreen')||!dev?.capabilities?.includes('phoneControl'))return false;
+   const snap=phoneSync.snapshot(deviceId);
+   const fresh=Boolean(snap?.at&&Date.now()-snap.at<15000);
+   const sharing=Boolean(phoneMedia.latest(deviceId,'screen'));
+   return Boolean(fresh&&snap?.status?.controlEnabled===true&&sharing);
+  };
+  const step=edgeHandoff.sample({point,at:Date.now(),enabled,displays,devices,layout:currentAppSettings.phoneDeviceLayout||{},isEligible});
+  if(step.action==='enter'&&step.deviceId){
+   if(currentAppSettings.phoneSelectedDevice!==step.deviceId)try{saveAppSettings({phoneSelectedDevice:step.deviceId});}catch{}
+   phoneViewers.open(step.deviceId,'screen',{dock:{bounds:step.dockBounds,workArea:step.workArea,edge:step.edge,entryRatio:step.entryRatio,monitorId:step.monitorId}});
+  }else if(step.action==='release'&&step.deviceId){
+   phoneSync.cancelInputs(step.deviceId,'Phone control released.');
+   phoneViewers.releaseHandoff(step.deviceId,step.reason||'ineligible');
+  }
+ }catch{}
+},60);edgeHandoffTimer.unref?.();
 ipcMain.handle('phone-audio-devices',()=>phoneNative.request('audio-devices'));
 ipcMain.handle('phone-mic-status',async()=>({...(await micAutoSetup.status()),route:micRouter.snapshot(),automatic:currentAppSettings.phoneMicAuto!==false}));
 ipcMain.handle('phone-mic-setup',async event=>{if(![mainWindow,hubWindow].some(win=>win&&!win.isDestroyed()&&win.webContents===event.sender))throw Error('Unsupported setup window.');return micAutoSetup.retry();});
@@ -2037,8 +2069,8 @@ ipcMain.handle('remote-status',()=>remoteLink.status());
 ipcMain.handle('remote-start',async()=>({enabled:false,error:'External relays are disabled. Use a direct local phone connection.'}));
 ipcMain.handle('remote-stop',()=>{remoteLink.stop();return remoteLink.status();});
 ipcMain.handle('android-pairing',()=>androidGateway.generateNewPin());
-ipcMain.handle('android-revoke',(_event,id)=>androidGateway.revoke(id));
-ipcMain.handle('android-capabilities',(_event,{id,capabilities})=>{const r=androidGateway.setCapabilities(id,capabilities);if(!Array.isArray(capabilities)||!capabilities.includes('phoneControl')||!capabilities.includes('phoneScreen'))phoneSync.cancelInputs(id,'Phone permission revoked.');return r;});
+ipcMain.handle('android-revoke',(_event,id)=>{if(edgeHandoff.getActiveDevice()===id){edgeHandoff.release('revoked');phoneViewers.releaseHandoff(id,'revoked');}return androidGateway.revoke(id);});
+ipcMain.handle('android-capabilities',(_event,{id,capabilities})=>{const r=androidGateway.setCapabilities(id,capabilities);if(!Array.isArray(capabilities)||!capabilities.includes('phoneControl')||!capabilities.includes('phoneScreen')){phoneSync.cancelInputs(id,'Phone permission revoked.');if(edgeHandoff.getActiveDevice()===id){edgeHandoff.release('revoked');phoneViewers.releaseHandoff(id,'revoked');}}return r;});
 ipcMain.handle('hermes-cancel',()=>{hermesService.client.cancel();return {success:true};});
 ipcMain.handle('check-release',async()=>{
   if(!currentAppSettings.releaseFeed)return {available:false,unconfigured:true};

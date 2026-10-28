@@ -1,6 +1,11 @@
 .phone-device-map{margin:8px 0 18px;color:var(--app-text,#e6edf7)}
 .phone-device-map>header{display:flex;align-items:end;justify-content:space-between;gap:12px;margin:0 2px 9px}
 .phone-device-map>header>div{display:flex;align-items:baseline;gap:9px}.phone-device-map>header b{font-size:14px}.phone-device-map>header span,.phone-device-map>header small{font-size:10px;color:#8f9cb0}
+.phone-device-map-switcher{display:flex;flex-wrap:wrap;gap:6px;margin:0 2px 8px}
+.phone-device-map-switcher button{padding:4px 10px;border:1px solid #ffffff1a;border-radius:999px;background:#121824;color:#bfd0e8;font-size:11px;cursor:pointer}
+.phone-device-map-switcher button[aria-pressed=true]{border-color:#8ab4ffb0;background:#1c2940;color:#fff}
+.phone-edge-handoff-toggle{display:flex;align-items:center;gap:7px;margin:0 2px 9px;font-size:11px;color:#a8b8cf;cursor:pointer}
+.phone-edge-handoff-toggle input{margin:0}
 .phone-device-map-canvas{position:relative;overflow:hidden;border:1px solid #ffffff12;border-radius:18px;background-color:#0b0f17;background-image:radial-gradient(#ffffff13 1px,transparent 1px);background-size:18px 18px;touch-action:none;isolation:isolate}
 .phone-map-monitor{position:absolute;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;min-width:48px;min-height:38px;padding:5px;border:1px solid #74839a;border-radius:7px;background:#151d2a;box-shadow:0 5px 15px #0005;color:#aebbd0;pointer-events:none}
 .phone-map-monitor[data-primary=true]{border-color:#8ab4ffb0;box-shadow:0 0 0 1px #8ab4ff33,0 5px 15px #0005}

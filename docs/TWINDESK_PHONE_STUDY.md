@@ -12,7 +12,7 @@ Use TwinDesk as a source of product and architecture ideas for improving the exi
 - Its multi-device design treats placement as a persistent device map. A drag is an explicit layout edit, and edge routing is derived from the saved arrangement. This is useful as a model for predictable placement; MOHIVX can start with local, freely draggable phone cards without implementing cross-device mouse routing.
 - Phone metadata is sent separately from the screen stream, so identity, battery, display dimensions and stream state need not be inferred from a thumbnail.
 - Remote keyboard input distinguishes physical key events from committed text. A phone's text field and active input method are the right boundary for Unicode input; a fixed PC-key-to-Android-character table is not a reliable multilingual solution.
-- The public TwinDesk repository currently has an open report that changing keyboard language does not work in a phone/tablet-to-PC control mode: [issue #10](https://github.com/InukaAsith/TwinDesk/issues/10). Do not treat its keyboard behavior as proof that Arabic or other layouts work.
+- The public TwinDesk repository currently has open reports for keyboard language switching failing in phone/tablet control mode ([issue #10](https://github.com/InukaAsith/TwinDesk/issues/10)) and primary monitor cursor conflicts ([issue #22](https://github.com/InukaAsith/TwinDesk/issues/22)). Fast cursor movements triggering unwanted device switching was reported in [issue #66](https://github.com/InukaAsith/TwinDesk/issues/66), which was closed as fixed in a subsequent release. Treat open issues #10 and #22 as active reliability warnings, and note how #66's resolution informs edge dwell and velocity thresholding.
 
 ## MOHIVX status found during review / وضع MOHIVX الذي ظهر في المراجعة
 
@@ -36,7 +36,7 @@ Use TwinDesk as a source of product and architecture ideas for improving the exi
 
 3. **Drag arrangement / ترتيب بالسحب**
    - Let the user drag cards freely within a responsive board. Use pointer capture, distinguish clicks from drags, persist normalized coordinates, and keep a keyboard-accessible way to select a phone.
-   - Treat edge-to-edge mouse transfer as a separate future feature. A visual arrangement alone must not imply that pointer routing works.
+   - Treat edge dwell as an explicit opt-in (`phoneEdgeHandoff`): after opt-in edge dwell, it opens/focuses a docked PC `PhoneViewer` and enables viewer input; it does NOT move Windows cursor into Android, draw cursor on glass, or route pointer movement globally. Non-overlapping card placement and shared interior monitor-boundary exclusion prevent primary monitor conflicts (open issue #22), while velocity ceiling, edge dwell, and spatial hysteresis address rapid switching issues (informed by closed issue #66). Safe release on Escape, disconnect, or revocation returns to view mode without OS cursor capture.
 
 4. **Real display dimensions / أبعاد الشاشة الحقيقية**
    - Send the phone's display width, height, density and rotation as metadata in its existing sync status. Keep these separate from the downscaled JPEG frame dimensions.

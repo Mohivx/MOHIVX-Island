@@ -113,3 +113,143 @@ test('PhoneSync prioritizes ordered control inputs ahead of bulk commands and ca
  assert.deepEqual(await stopReq,{stopped:true});
  sync.clear();
 });
+test('multi-monitor phone placement preserves primary display, avoids monitor/card overlap and shared boundaries, and enforces dwell, velocity ceiling, hysteresis, and release',async()=>{
+ const {computeDisplayBoard,isSharedMonitorBoundary,resolveAllPhonePlacements,createEdgeHandoffController}=await import('../src/components/phonePlacement.mjs');
+ const displays=[
+  {id:'1',name:'Display 1',primary:true,bounds:{x:0,y:0,width:1920,height:1080},workArea:{x:0,y:0,width:1920,height:1040}},
+  {id:'2',name:'Display 2',primary:false,bounds:{x:1920,y:0,width:1920,height:1080},workArea:{x:1920,y:0,width:1920,height:1040}}
+ ];
+ assert.equal(isSharedMonitorBoundary(displays[0],'right',displays),true);
+ assert.equal(isSharedMonitorBoundary(displays[1],'left',displays),true);
+ assert.equal(isSharedMonitorBoundary(displays[0],'left',displays),false);
+ assert.equal(isSharedMonitorBoundary(displays[1],'right',displays),false);
+
+ const board=computeDisplayBoard(displays,720);
+ assert.equal(board.primaryDisplayId,'1');
+ const devices=[{id:'phone-a',name:'Samsung A16'},{id:'phone-b',name:'Pixel 8'}];
+ // Even if both phones are placed on top of the primary monitor at the same coordinate, resolveAllPhonePlacements separates them outside monitors
+ const collidingLayout={'phone-a':{x:.85,y:.45},'phone-b':{x:.85,y:.45}};
+ const placements=resolveAllPhonePlacements(devices,collidingLayout,board,displays);
+ const a=placements['phone-a'],b=placements['phone-b'];
+ assert.equal(a.sharedBoundary,false);
+ assert.equal(b.sharedBoundary,false);
+ const overlap=(r1,r2)=>r1.left<r2.left+r2.width&&r1.left+r1.width>r2.left&&r1.top<r2.top+r2.height&&r1.top+r1.height>r2.top;
+ assert.equal(overlap(a,b),false,'placed phone cards must not overlap each other');
+ for(const m of board.monitorRects){
+  assert.equal(overlap(a,m),false,'phone-a must not overlap monitor rect');
+  assert.equal(overlap(b,m),false,'phone-b must not overlap monitor rect');
+ }
+
+ // Place phone-a at outer left edge of Display 1 (x:0, y:0.4)
+ const cleanLayout={'phone-a':{x:0,y:.4},'phone-b':{x:.2,y:.4}};
+ const ctrl=createEdgeHandoffController({dwellMs:220,edgeThresholdPx:6,hysteresisPx:32,maxSpeedPxPerMs:1.6,cooldownMs:600});
+ let eligible=true;
+ const step=(point,at,enabled=true)=>ctrl.sample({point,at,enabled,displays,devices:[devices[0]],layout:cleanLayout,boardWidth:720,isEligible:()=>eligible});
+
+ // 1. Interior shared boundary (x=1920 between Display 1 and Display 2) never triggers handoff
+ assert.equal(step({x:1920,y:500},1000).action,'none');
+ assert.equal(step({x:1920,y:500},1300).action,'none');
+
+ // 2. Fast cursor flick into the outer left edge (x=900 -> x=2 in 50ms = 17.96 px/ms > 1.6 px/ms) is suppressed (TwinDesk #66)
+ step({x:900,y:500},2000);
+ const fast=step({x:2,y:500},2050);
+ assert.equal(fast.action,'none');
+ assert.equal(fast.reason,'fast-cursor');
+
+ // 3. Settled cursor dwelling at outer left edge (x=2, y=500): <220ms stays in 'dwell', >=220ms triggers 'enter'
+ const dwell1=step({x:2,y:500},2100);
+ assert.equal(dwell1.action,'dwell');
+ assert.equal(dwell1.pendingDeviceId,'phone-a');
+ // Leaving edge before dwell completes cancels pending handoff
+ assert.equal(step({x:120,y:500},2200).action,'none');
+ // Re-enter smoothly and dwell full 220ms
+ step({x:20,y:500},3000);
+ assert.equal(step({x:2,y:500},3020).action,'dwell');
+ assert.equal(step({x:2,y:500},3150).action,'dwell');
+ const entered=step({x:2,y:500},3245);
+ assert.equal(entered.action,'enter');
+ assert.equal(entered.deviceId,'phone-a');
+ assert.equal(entered.edge,'left');
+ assert.equal(entered.primaryDisplayId,'1');
+ assert.equal(entered.dockBounds.x,8);
+ assert.equal(ctrl.getActiveDevice(),'phone-a');
+ assert.equal(ctrl.isRearmRequired(),true);
+
+ // 4. Escape release engages hysteresis & cooldown; staying near edge does not re-trigger until retreating >=32px and cooldown expires
+ const rel=ctrl.release('escape',3300);
+ assert.equal(rel.released,true);
+ assert.equal(rel.deviceId,'phone-a');
+ assert.equal(ctrl.getActiveDevice(),null);
+ assert.equal(step({x:2,y:500},3400).reason,'hysteresis');
+ assert.equal(step({x:2,y:500},4000).reason,'hysteresis');
+ // Retreat beyond hysteresisPx (x=80 >= 32px) after cooldown (t=4050 >= 3900) re-arms controller
+ assert.equal(step({x:80,y:500},4050).action,'none');
+ assert.equal(ctrl.isRearmRequired(),false);
+
+ // Re-enter and verify a lost capability immediately releases active handoff.
+ step({x:20,y:500},4100);
+ step({x:2,y:500},4120);
+ assert.equal(step({x:2,y:500},4350).action,'enter');
+ eligible=false;
+ const revoked=step({x:2,y:500},4400);
+ assert.equal(revoked.action,'release');
+ assert.equal(revoked.deviceId,'phone-a');
+ assert.equal(revoked.reason,'ineligible');
+ assert.equal(ctrl.getActiveDevice(),null);
+});
+test('docking preserves user-resized viewer dimensions and repositions window to edge without resetting width or height',async()=>{
+ const {computeViewerDockBounds}=await import('../src/components/phonePlacement.mjs');
+ const {createPhoneViewer}=require('../electron/services/phoneViewer.cjs');
+ const workArea={x:0,y:0,width:1920,height:1040};
+ const customSize={width:540,height:910};
+
+ const dockedLeft=computeViewerDockBounds(workArea,'left',0.5,customSize);
+ assert.equal(dockedLeft.width,540);
+ assert.equal(dockedLeft.height,910);
+ assert.equal(dockedLeft.x,8);
+ assert.equal(dockedLeft.y,Math.round(1040*0.5 - 910/2));
+
+ const dockedRight=computeViewerDockBounds(workArea,'right',0.3,customSize);
+ assert.equal(dockedRight.width,540);
+ assert.equal(dockedRight.height,910);
+ assert.equal(dockedRight.x,1920 - 540 - 8);
+
+ let setBoundsArgs=null;
+ class MockBrowserWindow {
+  constructor(opts){this.opts=opts;this._bounds={...opts};this._normalBounds={...opts};this.maximized=false;this.webContents={setWindowOpenHandler:()=>{},on:()=>{},once:(ev,cb)=>cb(),send:()=>{},isLoading:()=>false};}
+  isDestroyed(){return false;}
+  isMinimized(){return false;}
+  isMaximized(){return this.maximized;}
+  isAlwaysOnTop(){return false;}
+  show(){}
+  focus(){}
+  restore(){}
+  unmaximize(){this.maximized=false;this.unmaximized=true;}
+  setTitle(){}
+  loadFile(){}
+  on(){}
+  once(ev,cb){if(ev==='ready-to-show')cb();}
+  getBounds(){return {...this._bounds};}
+  getNormalBounds(){return {...this._normalBounds};}
+  setBounds(b){setBoundsArgs={...b};this._bounds={...b};if(!this.maximized)this._normalBounds={...b};}
+ }
+ const mockScreen={
+  getCursorScreenPoint:()=>({x:500,y:500}),
+  getDisplayNearestPoint:()=>({workArea})
+ };
+ const viewer=createPhoneViewer({BrowserWindow:MockBrowserWindow,screen:mockScreen,root:process.cwd()});
+ const win=viewer.open('phone-resize-test','screen');
+ win._bounds={x:300,y:300,width:540,height:910};
+ win._normalBounds={...win._bounds};
+ viewer.open('phone-resize-test','screen',{dock:{edge:'right',workArea,entryRatio:0.5}});
+ assert.equal(setBoundsArgs.x,1920 - 540 - 8);
+ assert.equal(win.getBounds().width,540);
+ assert.equal(win.getBounds().height,910);
+ win.maximized=true;
+ win._bounds={x:0,y:0,width:1920,height:1040};
+ viewer.open('phone-resize-test','screen',{dock:{edge:'left',workArea,entryRatio:0.5}});
+ assert.equal(win.unmaximized,true);
+ assert.equal(setBoundsArgs.x,8);
+ assert.equal(setBoundsArgs.width,540);
+ assert.equal(setBoundsArgs.height,910);
+});

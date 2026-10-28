@@ -33,6 +33,24 @@ export function PhoneViewer(){
  useEffect(()=>{let alive=true;const read=async()=>{try{const data=await ipc?.invoke('phone-sync-status',device);if(alive){const fresh=data?.at===undefined||Date.now()-Number(data.at)<15000;const nextAvailable=Boolean(fresh&&data?.status?.controlEnabled===true);setAvailable(nextAvailable);setName(data?.status?.name||'');if(!nextAvailable){stateRef.current.available=false;queueRef.current?.clear('unavailable');}}}catch{if(alive){setAvailable(false);stateRef.current.available=false;queueRef.current?.clear('error');}}};void read();const id=setInterval(read,1000);return()=>{alive=false;clearInterval(id);queueRef.current?.clear('unmount');};},[device]);
  useEffect(()=>{if(!available||!live){stateRef.current.control=false;down.current=null;queueRef.current?.clear('stopped');setControl(false);}},[available,live]);
  useEffect(()=>{if(!control){down.current=null;queueRef.current?.clear('control-off');}},[control]);
+ useEffect(()=>{
+  if(kind!=='screen')return;
+  const onHandoff=(_:unknown,payload:any)=>{
+   if(payload?.device&&payload.device!==device)return;
+   if(payload?.active){
+    if(stateRef.current.available&&stateRef.current.live){
+     stateRef.current.control=true;setControl(true);
+     requestAnimationFrame(()=>keyboardCapture.current?.focus());
+    }
+   }else{
+    stateRef.current.control=false;down.current=null;
+    queueRef.current?.clear(payload?.reason||'edge-release');
+    setControl(false);
+   }
+  };
+  ipc?.on('phone-edge-handoff',onHandoff);
+  return()=>{ipc?.removeListener('phone-edge-handoff',onHandoff);};
+ },[device,kind]);
  const input=async(value:unknown)=>{
   if(!stateRef.current.control||!stateRef.current.available||!stateRef.current.live)return false;
   setError('');
@@ -42,7 +60,7 @@ export function PhoneViewer(){
  const keyDown=(e:ReactKeyboardEvent<HTMLDivElement>)=>{
   if(!control||isComposingKeyEvent(e,composing.current))return;
   const resolved=resolvePhoneKeyShortcut(e,composing.current);
-  if(resolved?.type==='escape'){e.preventDefault();stateRef.current.control=false;queueRef.current?.clear('escape');setControl(false);return;}
+  if(resolved?.type==='escape'){e.preventDefault();stateRef.current.control=false;queueRef.current?.clear('escape');setControl(false);void ipc?.invoke('phone-edge-handoff-release',{device,reason:'escape'});return;}
   if(resolved?.type==='key'){e.preventDefault();void input({type:'key',key:resolved.key});return;}
   const target=e.target as HTMLElement|null;
   if(target!==keyboardCapture.current&&target?.tagName!=='INPUT'&&target?.tagName!=='TEXTAREA'){
@@ -53,7 +71,7 @@ export function PhoneViewer(){
  const Icon=kind==='camera'?Camera:Monitor;
  return <main className="phone-viewer" dir={ar?'rtl':'ltr'}>
  <header className="phone-viewer-titlebar" onDoubleClick={()=>void ipc?.invoke('desktop-window-action','maximize')}><b><Icon size={16}/>{kind==='camera'?t('Phone camera','كاميرا الهاتف'):t('Phone screen','شاشة الهاتف')}{name&&<small> · {name}</small>}</b><WindowControls ar={ar}/></header>
-  {kind==='screen'&&<div className="phone-viewer-control-bar"><button aria-pressed={control} disabled={!available||!live} onClick={()=>setControl(value=>{const next=!value;stateRef.current.control=next;if(!next)queueRef.current?.clear('toggle-off');return next;})}><MousePointer2 size={15}/>{control?t('Control enabled','التحكم مفعّل'):t('Control phone','التحكم بالهاتف')}</button><span>{control?t('Click, drag and scroll. Type with your current Windows language; Esc returns to view only.','انقر واسحب ومرّر. اكتب باللغة المحددة في ويندوز؛ Esc للعودة للعرض فقط.'):available?t('Enable control to interact with the screen.','فعّل التحكم للتفاعل مع الشاشة.'):t('Enable phone control in the Android Phone section, then share its screen.','فعّل التحكم من قسم الهاتف في أندرويد، ثم شارك الشاشة.')}</span></div>}
+  {kind==='screen'&&<div className="phone-viewer-control-bar"><button aria-pressed={control} disabled={!available||!live} onClick={()=>setControl(value=>{const next=!value;stateRef.current.control=next;if(!next){queueRef.current?.clear('toggle-off');void ipc?.invoke('phone-edge-handoff-release',{device,reason:'toggle-off'});}return next;})}><MousePointer2 size={15}/>{control?t('Control enabled','التحكم مفعّل'):t('Control phone','التحكم بالهاتف')}</button><span>{control?t('Click, drag and scroll. Type with your current Windows language; Esc returns to view only.','انقر واسحب ومرّر. اكتب باللغة المحددة في ويندوز؛ Esc للعودة للعرض فقط.'):available?t('Enable control to interact with the screen.','فعّل التحكم للتفاعل مع الشاشة.'):t('Enable phone control in the Android Phone section, then share its screen.','فعّل التحكم من قسم الهاتف في أندرويد، ثم شارك الشاشة.')}</span></div>}
  <div className="phone-viewer-canvas" data-fill={fill} data-control={control} tabIndex={0}
    onKeyDown={keyDown}
    onPointerDown={e=>{if(!control||!frame||!e.isPrimary)return;const p=phonePoint(e.clientX,e.clientY,e.currentTarget.getBoundingClientRect(),frame.width||0,frame.height||0,fill);if(!p)return;e.preventDefault();e.currentTarget.focus();keyboardCapture.current?.focus();e.currentTarget.setPointerCapture(e.pointerId);down.current={...p,at:performance.now()};}}
@@ -64,6 +82,6 @@ export function PhoneViewer(){
    {kind==='screen'&&<textarea ref={keyboardCapture} className="phone-keyboard-capture" aria-label={t('Type on the phone using your Windows keyboard layout','اكتب على الهاتف بتخطيط لوحة مفاتيح ويندوز')} disabled={!control} tabIndex={control?0:-1} autoCapitalize="off" autoComplete="off" autoCorrect="off" spellCheck={false} onCompositionStart={()=>{composing.current=true;}} onCompositionEnd={e=>{composing.current=false;const committed=e.data;if(committed){compositionCommit.current={text:committed,expires:Date.now()+350};void input({type:'text',text:committed});}const target=e.currentTarget;setTimeout(()=>{target.value='';},0);}} onBeforeInput={e=>{const event=e.nativeEvent as InputEvent;if(!control){e.preventDefault();return;}if(event.inputType!=='insertText'||!event.data||event.isComposing||composing.current)return;const pending=compositionCommit.current;if(pending&&pending.expires>Date.now()&&pending.text===event.data){compositionCommit.current=null;e.preventDefault();return;}compositionCommit.current=null;e.preventDefault();void input({type:'text',text:event.data});}}/>}
  </div>
  {kind==='screen'&&<div className="phone-viewer-input"><div>{([['back',ArrowLeft,t('Back','رجوع')],['home',Home,t('Home','الرئيسية')],['recents',PanelsTopLeft,t('Recent apps','التطبيقات الأخيرة')]] as const).map(([key,KeyIcon,label])=><button key={key} disabled={!control} aria-label={label} onClick={()=>void input({type:'key',key})}><KeyIcon size={17}/></button>)}</div><form onSubmit={e=>{e.preventDefault();const draft=text;if(draft.trim())void input({type:'text',text:draft}).then(sent=>{if(sent)setText(current=>current===draft?'':current);});}}><input disabled={!control} maxLength={2000} value={text} onChange={e=>setText(e.target.value)} aria-label={t('Type on your phone','الكتابة على الهاتف')} placeholder={t('Tap a text field, then type here…','اضغط حقلًا على الهاتف، ثم اكتب هنا…')}/><button disabled={!control||!text.trim()} aria-label={t('Send text','إرسال النص')}><Send size={16}/></button></form></div>}
- <footer className="phone-viewer-toolbar"><span className="phone-viewer-status" data-live={live&&!delayed}>{live?(delayed?t('Connection delayed','تأخر الاتصال'):t('Live','مباشر')):t('Stopped','متوقف')}{live&&<small dir="ltr">{frame?.width} × {frame?.height} · {fps} fps</small>}</span><div><button aria-pressed={fill} aria-label={t('Fill window','ملء النافذة')} onClick={()=>setFill(!fill)}><Maximize2 size={16}/></button><button aria-pressed={pinned} aria-label={t('Keep on top','البقاء في المقدمة')} onClick={async()=>{const value=await ipc?.invoke('desktop-window-action','pin');if(value)setPinned(Boolean(value.alwaysOnTop));}}><Pin size={16}/></button><button disabled={!live} onClick={async()=>{stateRef.current.control=false;queueRef.current?.clear('stop-button');setControl(false);try{await ipc?.invoke('phone-command',{device,command:{type:'capture.stop',kind}});await ipc?.invoke('phone-media-stop',{device,kind});}catch{setError(t('Could not stop sharing.','تعذر إيقاف المشاركة.'));}}}><Square size={14}/>{t('Stop','إيقاف')}</button></div></footer>{error&&<p role="alert" className="phone-viewer-error">{error}</p>}
+ <footer className="phone-viewer-toolbar"><span className="phone-viewer-status" data-live={live&&!delayed}>{live?(delayed?t('Connection delayed','تأخر الاتصال'):t('Live','مباشر')):t('Stopped','متوقف')}{live&&<small dir="ltr">{frame?.width} × {frame?.height} · {fps} fps</small>}</span><div><button aria-pressed={fill} aria-label={t('Fill window','ملء النافذة')} onClick={()=>setFill(!fill)}><Maximize2 size={16}/></button><button aria-pressed={pinned} aria-label={t('Keep on top','البقاء في المقدمة')} onClick={async()=>{const value=await ipc?.invoke('desktop-window-action','pin');if(value)setPinned(Boolean(value.alwaysOnTop));}}><Pin size={16}/></button><button disabled={!live} onClick={async()=>{stateRef.current.control=false;queueRef.current?.clear('stop-button');setControl(false);void ipc?.invoke('phone-edge-handoff-release',{device,reason:'stop-button'});try{await ipc?.invoke('phone-command',{device,command:{type:'capture.stop',kind}});await ipc?.invoke('phone-media-stop',{device,kind});}catch{setError(t('Could not stop sharing.','تعذر إيقاف المشاركة.'));}}}><Square size={14}/>{t('Stop','إيقاف')}</button></div></footer>{error&&<p role="alert" className="phone-viewer-error">{error}</p>}
  </main>;
 }
