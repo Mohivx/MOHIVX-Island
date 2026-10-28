@@ -1,3 +1,37 @@
+# MOHIVX Island 1.1.8
+
+## What's new
+
+- Stream Android media audio to the paired Windows PC after Android's explicit screen-capture consent.
+- Audio capture is a separate phone permission, uses Android playback capture rather than the phone microphone, and stops when sharing is stopped or permission is revoked.
+- The phone page now exposes playback-audio start/stop status and a live level indicator. Android 10+ is required; protected apps and calls may not provide capturable audio.
+- The Android companion version advances to 1.1.8 (code 167); its launcher art is generated from the same Windows app icon source.
+
+## الجديد
+
+- بث صوت الوسائط من أندرويد إلى كمبيوتر ويندوز المقترن بعد موافقة أندرويد الصريحة على التقاط الشاشة.
+- التقاط الصوت صلاحية مستقلة، ويستخدم صوت تشغيل الوسائط في أندرويد لا مايك الهاتف، ويتوقف عند إيقاف المشاركة أو سحب الصلاحية.
+- يعرض قسم الهاتف حالة تشغيل/إيقاف الصوت ومؤشر مستوى مباشر. يتطلب أندرويد 10 أو أحدث؛ وقد تمنع التطبيقات المحمية أو المكالمات التقاط الصوت.
+- تحديث نسخة مرافق أندرويد إلى 1.1.8 (رقم البناء 167)، مع توليد الأيقونة من مصدر أيقونة تطبيق ويندوز نفسه.
+
+## Downloads | ملفات التحميل
+
+- **Windows installer:** MOHIVX-Island-Setup-1.1.8.exe
+- **Windows portable:** MOHIVX Island 1.1.8.exe
+- **Android companion:** MOHIVX-Island-Companion-1.1.8.apk
+
+- **مثبّت Windows:** MOHIVX-Island-Setup-1.1.8.exe
+- **نسخة Windows المحمولة:** MOHIVX Island 1.1.8.exe
+- **تطبيق Android المرافق:** MOHIVX-Island-Companion-1.1.8.apk
+
+## License | الترخيص
+
+MOHIVX Island is licensed under GNU GPL-3.0-only. Third-party components retain their own licenses and notices.
+
+كود MOHIVX Island مرخص وفق GNU GPL-3.0-only. تحتفظ مكونات الطرف الثالث بتراخيصها وإشعاراتها الخاصة.
+
+---
+
 # MOHIVX Island 1.1.7
 
 ## What's new

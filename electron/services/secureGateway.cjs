@@ -9,7 +9,7 @@ const {seal,open}=require('./secureEnvelope.cjs');
 const {validateInput}=require('./phoneBridge.cjs');
 const {localAddress,directAddresses}=require('./directAddress.cjs');
 const SECURE_REQUEST=Symbol('authenticated envelope');
-const CAPS = ['telemetry', 'volume', 'wallpaper', 'apps', 'ai', 'agents', 'agentApprovals', 'power','remoteInput','desktopView','phoneScreen','phoneCamera','phoneMic','phoneData','phoneFilesWrite','phoneMessages','phoneContacts','phoneCalls','phoneControl','phoneMedia','phoneClipboard'];
+const CAPS = ['telemetry', 'volume', 'wallpaper', 'apps', 'ai', 'agents', 'agentApprovals', 'power','remoteInput','desktopView','phoneScreen','phoneCamera','phoneMic','phoneAudio','phoneData','phoneFilesWrite','phoneMessages','phoneContacts','phoneCalls','phoneControl','phoneMedia','phoneClipboard'];
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 class AndroidGatewayService {
   constructor(port = 9120, appDataDir, log = () => {}, options = {}) {
@@ -50,7 +50,7 @@ class AndroidGatewayService {
   revoke(id) { this.providers.phoneSync?.revoke(id);this.providers.phoneMedia?.clear(id);this.devices = this.devices.filter(d => d.id !== id); this.persist(); return this.status(); }
   setCapabilities(id, capabilities) {
     const d = this.devices.find(d => d.id === id); if (!d) throw new Error('Device not found.');
-    if(!Array.isArray(capabilities))throw Error('Invalid permissions.');d.capabilities = CAPS.filter(c => capabilities.includes(c));for(const [kind,cap]of Object.entries({camera:'phoneCamera',screen:'phoneScreen',mic:'phoneMic'}))if(!d.capabilities.includes(cap))this.providers.phoneMedia?.clear(id,kind);if(!d.capabilities.includes('phoneData')&&!d.capabilities.includes('phoneClipboard'))this.providers.phoneSync?.clearShares?.(id);if(!d.capabilities.includes('phoneClipboard'))this.providers.phoneSync?.clearClipboard?.(id);this.persist(); return this.status();
+    if(!Array.isArray(capabilities))throw Error('Invalid permissions.');d.capabilities = CAPS.filter(c => capabilities.includes(c));for(const [kind,cap]of Object.entries({camera:'phoneCamera',screen:'phoneScreen',mic:'phoneMic',audio:'phoneAudio'}))if(!d.capabilities.includes(cap))this.providers.phoneMedia?.clear(id,kind);if(!d.capabilities.includes('phoneData')&&!d.capabilities.includes('phoneClipboard'))this.providers.phoneSync?.clearShares?.(id);if(!d.capabilities.includes('phoneClipboard'))this.providers.phoneSync?.clearClipboard?.(id);this.persist(); return this.status();
   }
   async body(req,limit=65536) {
     let size = 0, bytes = [];
@@ -136,13 +136,13 @@ class AndroidGatewayService {
         if(!this.devices.includes(device))return reply(403,{success:false,error:'Device revoked.'});
         return reply(200,{success:true,...value});
       }
-      if(route==='/api/phone-stop'&&req.method==='POST'){const data=await this.body(req);return reply(200,this.providers.phoneMedia?.clear(device.id,['camera','screen','mic'].includes(data.kind)?data.kind:undefined)||{success:true});}
-      if(route==='/api/phone-start'&&req.method==='POST'){const data=await this.body(req),permission={camera:'phoneCamera',screen:'phoneScreen',mic:'phoneMic'}[data.kind];if(!permission||!this.devices.includes(device)||!device.capabilities.includes(permission))return reply(403,{success:false,error:'Enable this device permission on the PC.'});return reply(200,{...this.providers.phoneMedia.begin(device.id,data.kind),mediaLanes:true});}
+      if(route==='/api/phone-stop'&&req.method==='POST'){const data=await this.body(req);return reply(200,this.providers.phoneMedia?.clear(device.id,['camera','screen','mic','audio'].includes(data.kind)?data.kind:undefined)||{success:true});}
+      if(route==='/api/phone-start'&&req.method==='POST'){const data=await this.body(req),permission={camera:'phoneCamera',screen:'phoneScreen',mic:'phoneMic',audio:'phoneAudio'}[data.kind];if(!permission||!this.devices.includes(device)||!device.capabilities.includes(permission))return reply(403,{success:false,error:'Enable this device permission on the PC.'});return reply(200,{...this.providers.phoneMedia.begin(device.id,data.kind),mediaLanes:true});}
       if (route === '/api/status' && req.method === 'GET') return reply(200, { success:true, name:'MOHIVX Island', capabilities:device.capabilities,mediaLanes:true,remoteEndpoint:this.options.remoteEndpoint?.()||'' });
-      const capability = { '/api/telemetry':'telemetry', '/api/volume':'volume', '/api/wallpapers':'wallpaper', '/api/wallpaper':'wallpaper', '/api/apps':'apps', '/api/launch':'apps', '/api/ask':'ai', '/api/agents':'agents', '/api/agent-decision':'agentApprovals', '/api/power':'power','/api/remote-input':'remoteInput','/api/pc-screen':'desktopView','/api/phone-screen':'phoneScreen','/api/phone-camera':'phoneCamera','/api/phone-mic':'phoneMic' }[route];
+      const capability = { '/api/telemetry':'telemetry', '/api/volume':'volume', '/api/wallpapers':'wallpaper', '/api/wallpaper':'wallpaper', '/api/apps':'apps', '/api/launch':'apps', '/api/ask':'ai', '/api/agents':'agents', '/api/agent-decision':'agentApprovals', '/api/power':'power','/api/remote-input':'remoteInput','/api/pc-screen':'desktopView','/api/phone-screen':'phoneScreen','/api/phone-camera':'phoneCamera','/api/phone-mic':'phoneMic','/api/phone-audio':'phoneAudio' }[route];
       if (!capability) return reply(404, { success:false, error:'Unknown endpoint.' });
       if (!device.capabilities.includes(capability)) return reply(403, { success:false, error:'Enable this device permission on the PC.' });
-      const inflightKey=device.id+':'+(['/api/phone-camera','/api/phone-screen','/api/phone-mic'].includes(route)?route:'control');
+      const inflightKey=device.id+':'+(['/api/phone-camera','/api/phone-screen','/api/phone-mic','/api/phone-audio'].includes(route)?route:'control');
       if (this.inflight.has(inflightKey)) return reply(429, { success:false, error:'Wait for the current action.' });
       this.inflight.add(inflightKey);
       try {
@@ -160,7 +160,7 @@ class AndroidGatewayService {
           if (!this.devices.includes(device) || !device.capabilities.includes(capability)) return reply(403, {success:false,error:'Permission revoked.'});
           if (route === '/api/volume') { if (!Number.isInteger(data.value) || data.value < 0 || data.value > 100) throw new Error('Volume must be 0–100.'); value = await this.providers.audio.setVolume(data.value); }
           else if(route==='/api/remote-input')value=await this.providers.input.send(validateInput(data));
-          else if(['/api/phone-screen','/api/phone-camera','/api/phone-mic'].includes(route))value=this.providers.phoneMedia.publish(device.id,route.slice('/api/phone-'.length),data);
+          else if(['/api/phone-screen','/api/phone-camera','/api/phone-mic','/api/phone-audio'].includes(route))value=this.providers.phoneMedia.publish(device.id,route.slice('/api/phone-'.length),data);
           else if (route === '/api/wallpaper') { const item = (await this.providers.wallpaper.getList()).find(i => i.id === data.id); if (!item) throw new Error('Unknown wallpaper.'); value = await this.providers.wallpaper.set(item.filePath); }
           else if (route === '/api/launch') { const item = (await this.providers.apps.list()).find(i => i.id === data.id); if (!item) throw new Error('Unknown app.'); value = await this.providers.apps.launch(item); }
           else if (route === '/api/ask') { if (typeof data.prompt !== 'string' || !data.prompt.trim() || data.prompt.length > 4000) throw new Error('Enter a question under 4000 characters.'); value = await this.providers.ask(data.prompt); }

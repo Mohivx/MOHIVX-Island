@@ -175,6 +175,10 @@ const phoneMedia=new PhoneBridge(frame=>{
   if(process.env.MOHIVX_MEDIA_DIAGNOSTICS==='1'&&!frame.stopped&&Date.now()-(mediaDiagnosticTimes.get(frame.kind)||0)>5000){mediaDiagnosticTimes.set(frame.kind,Date.now());log('Phone stream '+frame.kind+': '+frame.fps+' fps, '+frame.width+'x'+frame.height);}
   if(frame.stopped&&frame.kind==='screen'&&edgeHandoff.getActiveDevice()===frame.device){edgeHandoff.release('screen-stopped');phoneSync.cancelInputs(frame.device,'Phone screen sharing stopped.');phoneViewers.releaseHandoff(frame.device,'screen-stopped');}
   const {data,dataUrl,...metadata}=frame;
+  if(frame.kind==='audio'){
+    if(hubWindow&&!hubWindow.isDestroyed())hubWindow.webContents.send(frame.stopped?'phone-audio-stopped':'phone-audio-packet',frame.stopped?{device:frame.device}:{device:frame.device,data:frame.data,rate:frame.rate,channels:frame.channels,at:frame.at,sequence:frame.sequence,inputLevel:frame.inputLevel});
+    return;
+  }
   for(const win of [hubWindow])if(win&&!win.isDestroyed())win.webContents.send('phone-media-updated',metadata);
   phoneViewers.send('phone-media-updated',metadata);
   if(frame.kind==='screen'&&frame.first&&!frame.stopped)phoneViewers.open(frame.device,'screen');
