@@ -1,7 +1,7 @@
 {
   "name": "mohivx-island",
   "private": true,
-  "version": "1.1.9",
+  "version": "1.1.10",
   "description": "MOHIVX Island — Premium Desktop Command Center",
   "author": "MOHIVX",
   "main": "electron/main.cjs",

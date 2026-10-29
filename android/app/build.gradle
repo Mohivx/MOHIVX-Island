@@ -11,8 +11,8 @@ android {
         applicationId "com.mohivx.island.companion"
         minSdk 24
         targetSdk 34
-        versionCode 168
-        versionName "1.1.9"
+        versionCode 169
+        versionName "1.1.10"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
